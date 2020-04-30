@@ -7,6 +7,9 @@ import java.util.LinkedList;
 import java.util.Queue;
 import java.util.concurrent.locks.*;
 
+/*
+ * Receive VHMsg from VHT
+ */
 public class VHReceiver implements MessageListener {
 
     public static VHMsg vhmsg;

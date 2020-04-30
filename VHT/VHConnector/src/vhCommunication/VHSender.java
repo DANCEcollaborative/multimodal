@@ -1,8 +1,11 @@
 package vhCommunication;
 import java.io.*;
 import edu.usc.ict.vhmsg.*;
+import vhMsgProcessor.*;
 
-// Send the VHmsg as needed,both text and NVB message.
+/*
+ * Send the VHmsg as needed,both text and NVB message.
+ */
 public class VHSender {
 
     public static VHMsg vhmsg;
@@ -11,13 +14,15 @@ public class VHSender {
 
     public int numMessagesReceived = 0;
     public int m_testSpecialCases = 0;
+    VHMsgSpliter vhmsgspliter = new VHMsgSpliter();
+    NVBMsgProcessor nvbMsg = new NVBMsgProcessor();
+    TextMsgProcessor textMsg = new TextMsgProcessor();
 
+    /*
+     * get the name of current Char in the VHT
+     */
     public void setChar(String name) {
         this.name = name;
-    }
-    
-    public void setMsgType(String msgtype) {
-        this.msgtype = msgtype;
     }
 
     private boolean kbhit()
@@ -48,96 +53,37 @@ public class VHSender {
         System.out.println( "VHSender Created" );
     }
 
-    //send the text message from Bazaar to VHT through vrExpress
-    private String constructTextMsg(String name, String s) {
-        if (name.equals("Rachel")) {
-            return  "vrExpress Rachel User user0003-1570425438621-56-1 <?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n" +
-                    "                      <act>\n" +
-                    "                       <participant id=\"Rachel\" role=\"actor\" />\n" +
-                    "                       <fml>\n" +
-                    "                       <turn start=\"take\" end=\"give\" />\n" +
-                    "                       <affect type=\"neutral\" target=\"addressee\"></affect>\n" +
-                    "                       <culture type=\"neutral\"></culture>\n" +
-                    "                       <personality type=\"neutral\"></personality>\n" +
-                    "                       </fml>\n" +
-                    "                       <bml>\n" +
-                                               "<speech id=\"sp1\" ref=\"rachel_ownvoiceTTS\" type=\"application/ssml+xml\">\n"+
-                                                s +
-                                                "</speech>\r\n"+
-                    "                       </bml>\n" +
-                    "                      </act>\n";
+    /*
+     * Send the text or Non-verbal behavior(NVB) message basing 
+     * @param name : String
+     * name of the Char
+     * @param content : String
+     * the content received from PSI
+     * @param msgtype : String
+     * the message type of the received message(text/nvb)
+     */
+    public void sendMessage(String name, String content, String msgtype) {
+        if (msgtype.equals("text")) {
+        	vhmsg.sendMessage(textMsg.constructTextMsg(name, content));
         }
-        else if (name.equals("Brad")) {
-            return  "vrExpress Brad User user0003-1570425438621-56-1 <?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n" +
-                    "                      <act>\n" +
-                    "                       <participant id=\"Brad\" role=\"actor\" />\n" +
-                    "                       <fml>\n" +
-                    "                       <turn start=\"take\" end=\"give\" />\n" +
-                    "                       <affect type=\"neutral\" target=\"addressee\"></affect>\n" +
-                    "                       <culture type=\"neutral\"></culture>\n" +
-                    "                       <personality type=\"neutral\"></personality>\n" +
-                    "                       </fml>\n" +
-                    "                       <bml>\n" +
-                    "<speech id=\"sp1\" type=\"application/ssml+xml\">\n"+
-                    s +
-                    "</speech>\r\n"+
-                    "                       </bml>\n" +
-                    "                      </act>\n";
-        }
-        return "Wrong TextMsg!";
-    	
-    }
-    
-    //send the NVB message(GAZE) from Bazaar to VHT through sbm
-    private String constructGazeMsg(String name, String s) {
-        if (name.equals("Rachel")) {
-            return "sbm bml char Rachel <gaze sbm:target-pos=\""+s+"\" sbm:joint-range=\"EYES NECK CHEST\"/>" ;
-        }
-        else if (name.equals("Brad")) {
-            return "sbm bml char Brad <gaze sbm:target-pos=\""+s+"\" sbm:joint-range=\"EYES NECK CHEST\"/>";
-        }
-        return "Wrong GazaMsg!";
-    	
-    }
-    
-  //send the NVB message(nod) from Bazaar to VHT through sbm
-    private String constructNodMsg(String name, String s) {
-        return "Nod-Not written yet";    	
-    }
-  //send the NVB message(head) from Bazaar to VHT through sbm
-    private String constructHeadMsg(String name, String s) {
-        return "Head-Not written yet";    	
-    }
-    
-    //this is a test method
-	/*    private String constructVrSpeech(String name, String s) {
-	    if (name.equals("Rachel")) {
-	        return s;
-	    }
-	    else if (name.equals("Brad")) {
-	        return s;
-	    }
-	    return "Wrong VrSpeechMsg!";
-	}*/
-
-    public void sendMessage(String name, String s, String msgtype) {
-        if (msgtype.equals("false")) {
-        	vhmsg.sendMessage(constructTextMsg(name, s));
-        }
-        else if (msgtype.equals("true")) {
-        	vhmsg.sendMessage(constructGazeMsg(name, s));
+        else if (msgtype.equals("NVB")) {
+        	vhmsg.sendMessage(nvbMsg.constructNVBMsg(name, content));
         }    	
     }
     
-    public void sendMessage(String s, String msgtype) {
-        if (msgtype.equals("false")) {
-        	vhmsg.sendMessage(constructTextMsg(this.name, s));
+    /*
+     * Send the text or Non-verbal behavior(NVB) message basing 
+     * @param content : String
+     * the content received from PSI
+     * @param msgtype : String
+     * the message type of the received message(text/nvb)
+     */
+    public void sendMessage(String content, String msgtype) {
+        if (msgtype.equals("text")) {
+        	vhmsg.sendMessage(textMsg.constructTextMsg(this.name, content));
         }
-        else if (msgtype.equals("true")) {
-        	vhmsg.sendMessage(constructGazeMsg(this.name, s));
-        }    	
+        else if (msgtype.equals("NVB")) {
+        	vhmsg.sendMessage(nvbMsg.constructNVBMsg(this.name, content));
+        } 	
     }
-
-    //default is sending the text message
-    public void sendMessage(String s) {vhmsg.sendMessage(constructTextMsg(this.name, s));}
 }

@@ -1,11 +1,12 @@
-package messageProcessor;
+package vhMsgProcessor;
 
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.math.*;
 
-public class vhMsgProcessor {
+// Split the messages that come from PSI
+public class VHMsgSpliter {
 	
 	public String msgtype;
 	public String identity;
@@ -13,21 +14,26 @@ public class vhMsgProcessor {
 	public double coordinate_x;
 	public double coordinate_y;
 	public double coordinate_z;
-	//different message type
-	public vhMsgProcessor() {
-		this.msgtype = "text";
-		this.identity = "someone";
-		this.coordinate_x = 0;
-		this.coordinate_y = 0;
-		this.coordinate_z = 0;
-		System.out.println( "vhMsgProcessor Created!" );
+
+
+	public VHMsgSpliter() {
+		System.out.println( "vhMsgSPliter Created!" );
 	}
 	
+	//get the message type  (Multimodal = true-->NVBGmessage; multimodal= false -->text message)
 	public String typeGetter (String s) {		
-		Pattern pattern = Pattern.compile("(?<=message to Bazaar:multimodal:).+?(?=;%;)");
+		Pattern pattern = Pattern.compile("(?<=multimodal:).+?(?=;%;)");
 		Matcher matcher = pattern.matcher(s);
+		String msgtype = null;
 		if (matcher.find()) {
-			String msgtype = matcher.group(0);
+			String tag = matcher.group(0);
+			System.out.println(tag);
+			if(tag.equals("true")) {
+				msgtype = "NVB";
+			}
+			else if (tag.equals("false")) {
+				msgtype = "text";
+			}
 			this.msgtype = msgtype;
 			//System.out.println(msgtype);
 			return msgtype;
@@ -39,6 +45,7 @@ public class vhMsgProcessor {
 		
 	}
 	
+	//get the identity information(Who).
 	public String identityGetter (String s) {		
 		Pattern pattern = Pattern.compile("(?<=;%;identity:).+?(?=;%;)");
 		Matcher matcher = pattern.matcher(s);
@@ -55,6 +62,7 @@ public class vhMsgProcessor {
 		
 	}
 	
+	//get the text information if this message is from bazaar.	
 	public String textGetter (String s) {		
 		Pattern pattern = Pattern.compile("(?<=;%;text:)[\\s\\S]*$");
 		Matcher matcher = pattern.matcher(s);
@@ -71,6 +79,7 @@ public class vhMsgProcessor {
 		
 	}
 	
+	//get the coordinate information if this message is a multi-modal message.	
 	public String[] coordinateGetter(String s) {
 		Pattern pattern = Pattern.compile("(?<=;%;location:)[\\s\\S]*$");
 		Matcher matcher = pattern.matcher(s);
@@ -86,18 +95,4 @@ public class vhMsgProcessor {
 			return null;
 		}
 	}	
-	public double[] angleCalculate(String s) {
-		String[] coordinate = coordinateGetter(s);
-		double coordinate_x = Double.valueOf(coordinate[0].toString());
-		double coordinate_y = Double.valueOf(coordinate[1].toString());
-		double coordinate_z = Double.valueOf(coordinate[2].toString());
-		double radianxy = Math.atan(coordinate_x/coordinate_y);
-		double radianyz = Math.atan((coordinate_z-11.89)/Math.sqrt(Math.pow(coordinate_x, 2)+Math.pow(coordinate_y, 2)));
-		double[] angle = {Math.toDegrees(radianxy), Math.toDegrees(radianyz), 55};
-		/*
-		 * for(double out: angle) { System.out.println(out); }
-		 */
-		return angle;
-	}	
-
 }

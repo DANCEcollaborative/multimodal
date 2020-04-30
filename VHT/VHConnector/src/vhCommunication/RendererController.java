@@ -2,10 +2,18 @@ package vhCommunication;
 
 import java.io.*;
 
-
+/*
+ * Set the background and Char in the Renderer
+ */
 public class RendererController {
     public RendererController() {
     }
+    
+    /*
+     * Set background in the Renderer
+     * @ param img : File
+     * name of the background image
+     */
 
     public void changeBackground(File img) {
         VHReceiver receiver = new VHReceiver();
@@ -31,12 +39,12 @@ public class RendererController {
             }
         }
         try {
-            FileInputStream fin=new FileInputStream(img);//输入�?
+            FileInputStream fin=new FileInputStream(img);
             try {
-                FileOutputStream fout=new FileOutputStream(newfile,true);//输出�?
+                FileOutputStream fout=new FileOutputStream(newfile,true);
                 byte[] b =new byte[1024];
                 try {
-                    while((fin.read(b))!=-1) {//读取到末�? 返回-1 否则返回读取的字节个�?
+                    while((fin.read(b))!=-1) {
                         fout.write(b);
                     }
                     fin.close();
@@ -56,11 +64,19 @@ public class RendererController {
         receiver.stop();
     }
 
+    /*
+     * Set background in the Renderer
+     * @ param path : String
+     * path of the background image
+     */
     public void changeBackground(String path) {
         File img = new File(path);
         changeBackground(img);
     }
 
+    /*
+     * Set background in the Renderer(Brad/Rachel)
+     */
     public String getCharacter() {
         VHReceiver receiver = new VHReceiver();
         VHSender.vhmsg.sendMessage("launcher requestChar");
