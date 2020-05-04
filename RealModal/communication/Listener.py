@@ -13,6 +13,7 @@ from component.RemoteListener import BaseRemoteListener
 from utils.LoggingUtil import logging
 from Socket.Client import DataTransmissionClient as DTC
 
+import time
 
 class BaseListener(metaclass=abc.ABCMeta):
     """
@@ -275,6 +276,8 @@ class ForwardVisualizer(ImageListener):
         self.register_lock = dict()
         self.raw_image_buffer = dict()
         self.raw_image_lock = threading.Lock()
+        self.base64_image_buffer = dict()
+        self.base64_image_lock = threading.Lock()
         self.ready_to_send = False
 
     def process_property(self, prop_str: str):
@@ -307,8 +310,8 @@ class ForwardVisualizer(ImageListener):
 
     def start(self):
         self.running = True
-        self.image_socket.start()
         _thread.start_new_thread(self.recv_process, ())
+        _thread.start_new_thread(self.send_process, ())
         while self.running:
             for key in GV.CameraToDisplay:
                 if not self.running:
@@ -359,7 +362,9 @@ class ForwardVisualizer(ImageListener):
                 decoded_img = self.decode_msg(img)
                 self.raw_image_buffer[self.property['camera_id']] = decoded_img
                 self.raw_image_lock.release()
-                _thread.start_new_thread(self._process_image, (img,))
+            if self.base64_image_lock.acquire(blocking=False):
+                self.base64_image_buffer[self.property['camera_id']] = img
+                self.base64_image_lock.release()
 
     def send_property(self):
         for prop_name in self.property.keys():
@@ -372,18 +377,36 @@ class ForwardVisualizer(ImageListener):
                 self.image_socket.send_str("%s:float:%s" % (prop_name, prop_value))
         self.image_socket.send_str("END")
 
-    def _process_image(self, img):
-        if self.send_lock.acquire(blocking=False):
+    def send_process(self):
+        self.image_socket.start()
+        while self.running:
+            time0 = time.time()
+            if 'camera_id' not in self.property or self.property['camera_id'] not in self.base64_image_buffer:
+                continue
+            if self.base64_image_lock.acquire(blocking=False):
+                img = self.base64_image_buffer[self.property['camera_id']]
+                self.base64_image_lock.release()
+                # convert to .jpg to minimum image size.
+                img = self.decode_msg(img)
+                if img is None:
+                    continue
+                img = base64.b64encode(cv2.imencode(".jpg", img)[1]).decode()
+            else:
+                continue
             while not self.ready_to_send:
                 pass
             if img is None or len(img) == 0 or self.width == 0 or self.height == 0:
                 self.ready_to_send = False
-                self.send_lock.release()
                 return
             else:
                 try:
-                    self.image_socket.send_img(self.width, self.height, img)
+                    time1 = time.time()
+                    logging("wait time: ", time1 - time0)
+                    print(len(img))
+                    self.image_socket.send_img(self.width, self.height, img, form='.jpg')
                     self.send_property()
+                    time2 = time.time()
+                    logging("send time: ", time2 - time1)
                 except ValueError:
                     print("ValueError occurred.")
                 except ConnectionAbortedError:
@@ -393,7 +416,6 @@ class ForwardVisualizer(ImageListener):
                     print(e)
                 finally:
                     self.ready_to_send = False
-                    self.send_lock.release()
 
     def recv_process(self):
         self.receive_socket.start()

@@ -1,5 +1,6 @@
 import numpy as np
 import base64
+import cv2
 
 
 class BaseTCPSocket():
@@ -28,7 +29,7 @@ class BaseTCPSocket():
         current = 0
         try:
             while True:
-                if current + self.BUF_SIZE >= 1:
+                if current + self.BUF_SIZE >= l:
                     self.tcp_socket.send(bytedata[current:])
                     break
                 else:
@@ -70,10 +71,11 @@ class BaseTCPSocket():
     def recv_str(self):
         return self.recv_data().decode()
 
-    def send_img(self, width: int, height: int, img: str):
+    def send_img(self, width: int, height: int, img: str, form: str = "raw"):
         self.send_str("New Image")
         self.send_int(width)
         self.send_int(height)
+        self.send_str(form)
         self.send_str(img)
 
     def recv_img(self):
@@ -82,7 +84,12 @@ class BaseTCPSocket():
             text = self.recv_str()
         width = self.recv_int()
         height = self.recv_int()
+        form = self.recv_str()
         raw_data = self.recv_str()
         b = base64.b64decode(raw_data)
-        img = np.frombuffer(b, dtype=np.uint8).reshape(height, width, -1)
+        img_data = np.frombuffer(b, dtype=np.uint8)
+        if form == "raw":
+            img = img_data.reshape(height, width, -1)
+        else:
+            img = cv2.imdecode(img_data, cv2.IMREAD_COLOR)
         return img
