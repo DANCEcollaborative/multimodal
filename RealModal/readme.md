@@ -1,4 +1,4 @@
-# Python-Related Branch
+# Python-Related Subtree
 
 This repository is designed for all the python development, namely **RealModal**, including framework, submodules, etc..
 
