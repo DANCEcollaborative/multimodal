@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/jdk-11.0.6">
+		<attributes>
+			<attribute name="module" value="true"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="lib" path="vhmsg-java.jar"/>
+	<classpathentry kind="lib" path="D:/Files/Users/haog Bao/Desktop/VHT/newbml/VHjava/activemq-all-5.15.11.jar"/>
+	<classpathentry kind="lib" path="D:/Files/Users/haog Bao/Desktop/VHT/newbml/VHjava/communication.jar"/>
+	<classpathentry kind="output" path="out/production/VHjava"/>
+</classpath>

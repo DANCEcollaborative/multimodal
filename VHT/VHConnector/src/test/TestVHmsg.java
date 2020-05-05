@@ -1,0 +1,44 @@
+package test;
+import smartlab.communication.CommunicationManager;
+import vhCommunication.RendererController;
+import vhCommunication.VHReceiver;
+import vhCommunication.VHSender;
+import vhCommunication.PSISubscriber;
+import vhMsgProcessor.NVBMsgProcessor;
+import vhMsgProcessor.TextMsgProcessor;
+import vhMsgProcessor.VHMsgSpliter;
+
+public class TestVHmsg {
+	public static void main(String[] args) {
+		VHSender sender = new VHSender();
+		//VHReceiver reciver = new VHReceiver();
+		// vhNvbgReceiver vhNvbgReceiver = new vhNvbgReceiver();
+		RendererController controller = new RendererController();
+		sender.setChar(controller.getCharacter());
+		//CommunicationManager manager = new CommunicationManager();
+		//psiNvbSubscriber textmsg = new psiNvbSubscriber("PSI_NVBG_Location");
+		VHMsgSpliter vhp = new VHMsgSpliter();
+	    NVBMsgProcessor nvbMsg = new NVBMsgProcessor();
+	    TextMsgProcessor textMsg = new TextMsgProcessor();
+		String s = "send message to : multimodal:false;%;identity:someone;%;text:ddddd";
+		String type = vhp.typeGetter(s);
+		String identity = vhp.identityGetter(s);
+		String[] coordinate = vhp.coordinateGetter(s);
+		//String text1 = vhp.textGetter(s);
+		String location = nvbMsg.angleGetter(s);
+		System.out.println(type + identity + location+ "11111111");
+		sender.sendMessage(s, type);
+		for(String out: coordinate) { System.out.println(out); }
+		/*
+		 * double[] coordinate1 = vhp.angleCalculate(s); System.out.println(type);
+		 * System.out.println(identity); for(double out: coordinate1) {
+		 * System.out.println(out); }
+		 */
+		
+		 // manager.subscribe(textmsg, "PSI_NVBG_Location");
+
+		//sender.sendMessage(message);
+		System.exit(0);
+	}
+
+}
