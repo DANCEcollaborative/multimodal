@@ -14,7 +14,7 @@ public class NVBMsgProcessor {
 	public String msgtype;
 	public String identity;
 	public String[] Coordinate;
-	VHMsgSpliter vhmsgspliter = new VHMsgSpliter();
+	VHMsgSpliter vhmsgspliter = VHMsgSpliter.getInstance();
 	
 	//initialization 
 	public NVBMsgProcessor() {

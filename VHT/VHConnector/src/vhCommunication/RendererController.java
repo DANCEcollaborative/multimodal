@@ -6,7 +6,15 @@ import java.io.*;
  * Set the background and Char in the Renderer
  */
 public class RendererController {
-    public RendererController() {
+    private static RendererController instance = new RendererController();
+    public static RendererController getInstance() {
+        return instance;
+    }
+
+    private VHReceiver receiver;
+
+    private RendererController() {
+        this.receiver = new VHReceiver();
     }
     
     /*
@@ -16,7 +24,6 @@ public class RendererController {
      */
 
     public void changeBackground(File img) {
-        VHReceiver receiver = new VHReceiver();
         String vhtpath;
         VHSender.vhmsg.sendMessage("launcher requestPath");
         while (true) {
@@ -78,7 +85,6 @@ public class RendererController {
      * Set background in the Renderer(Brad/Rachel)
      */
     public String getCharacter() {
-        VHReceiver receiver = new VHReceiver();
         VHSender.vhmsg.sendMessage("launcher requestChar");
         while (true) {
             String s = receiver.pollVhmsg();

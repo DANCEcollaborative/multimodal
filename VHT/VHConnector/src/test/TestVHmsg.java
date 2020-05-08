@@ -13,11 +13,11 @@ public class TestVHmsg {
 		VHSender sender = new VHSender();
 		//VHReceiver reciver = new VHReceiver();
 		// vhNvbgReceiver vhNvbgReceiver = new vhNvbgReceiver();
-		RendererController controller = new RendererController();
+		RendererController controller = RendererController.getInstance();
 		sender.setChar(controller.getCharacter());
 		//CommunicationManager manager = new CommunicationManager();
 		//psiNvbSubscriber textmsg = new psiNvbSubscriber("PSI_NVBG_Location");
-		VHMsgSpliter vhp = new VHMsgSpliter();
+		VHMsgSpliter vhp = VHMsgSpliter.getInstance();
 	    NVBMsgProcessor nvbMsg = new NVBMsgProcessor();
 	    TextMsgProcessor textMsg = new TextMsgProcessor();
 		String s = "send message to : multimodal:false;%;identity:someone;%;text:ddddd";

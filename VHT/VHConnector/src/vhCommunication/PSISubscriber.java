@@ -9,8 +9,8 @@ import vhMsgProcessor.*;
 public class PSISubscriber implements ISLTextSubscriber{
 	String name;
 	VHSender sender = new VHSender();
-	RendererController controller = new RendererController();
-	VHMsgSpliter vhp = new VHMsgSpliter();
+	RendererController controller = RendererController.getInstance();
+	VHMsgSpliter vhp = VHMsgSpliter.getInstance();
     NVBMsgProcessor nvbMsg = new NVBMsgProcessor();
     TextMsgProcessor textMsg = new TextMsgProcessor();
 	
@@ -22,12 +22,11 @@ public class PSISubscriber implements ISLTextSubscriber{
 
     @Override
     /*
-     * @param topic : String
+     * @param topic: String
      * the message topic in ActiveMQ.
-     * @param content £º String
+     * @param content£º String
      * the text content from PSI
      */
-    
     public void onReceive(String topic, String content) {
 
     	sender.setChar(controller.getCharacter());    	
@@ -38,6 +37,4 @@ public class PSISubscriber implements ISLTextSubscriber{
         System.out.println("Received string message. Subscriber:" + this.name + "\tTopic: " + topic + "\tContent:" + content);
         sender.sendMessage(content, type);
     }
-
-	
 }

@@ -14,7 +14,7 @@ public class VHSender {
 
     public int numMessagesReceived = 0;
     public int m_testSpecialCases = 0;
-    VHMsgSpliter vhmsgspliter = new VHMsgSpliter();
+    VHMsgSpliter vhmsgspliter = VHMsgSpliter.getInstance();
     NVBMsgProcessor nvbMsg = new NVBMsgProcessor();
     TextMsgProcessor textMsg = new TextMsgProcessor();
 

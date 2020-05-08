@@ -4,7 +4,7 @@ package vhMsgProcessor;
  * Processing the text message that revieved from PSI
  */
 public class TextMsgProcessor {
-	VHMsgSpliter vhmsgspliter = new VHMsgSpliter();
+	VHMsgSpliter vhmsgspliter = VHMsgSpliter.getInstance();
 
 	public TextMsgProcessor() {
 		super();

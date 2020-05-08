@@ -15,8 +15,12 @@ public class VHMsgSpliter {
 	public double coordinate_y;
 	public double coordinate_z;
 
+	private static VHMsgSpliter instance = new VHMsgSpliter();
+	public static VHMsgSpliter getInstance() {
+		return instance;
+	}
 
-	public VHMsgSpliter() {
+	private VHMsgSpliter() {
 		System.out.println( "vhMsgSPliter Created!" );
 	}
 	
