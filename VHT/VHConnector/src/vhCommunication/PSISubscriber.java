@@ -2,23 +2,40 @@ package vhCommunication;
 
 import smartlab.communication.ISLTextSubscriber;
 import vhMsgProcessor.*;
+
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
+import javax.jms.MessageConsumer;
+
+import org.apache.activemq.ActiveMQConnectionFactory;
 /*
  * Subscriber the message from PSI.
  */
 
 public class PSISubscriber implements ISLTextSubscriber{
 	String name;
-	VHSender sender = new VHSender();
+	VHSender sender = VHSender.getInstance();
 	RendererController controller = RendererController.getInstance();
 	VHMsgSpliter vhp = VHMsgSpliter.getInstance();
     NVBMsgProcessor nvbMsg = new NVBMsgProcessor();
     TextMsgProcessor textMsg = new TextMsgProcessor();
-	
+    BlockingQueue<Runnable> queue = new ArrayBlockingQueue<>(1000);    
+    
 
     public PSISubscriber(String name) {
         this.name = name;
     }
-
+    
+    ThreadPoolExecutor executor = new ThreadPoolExecutor(
+            Runtime.getRuntime().availableProcessors(), //corePoolSize
+            20,
+            120L,
+            TimeUnit.SECONDS,
+            queue
+    );
 
     @Override
     /*
@@ -32,9 +49,11 @@ public class PSISubscriber implements ISLTextSubscriber{
     	sender.setChar(controller.getCharacter());    	
 		String type = vhp.typeGetter(content);
 		String identity = vhp.identityGetter(content);
-		//String angle = nvbMsg.angleGetter(content);
-		//String nvbmsg = nvbMsg.constructNVBMsg(angle, content);
-        System.out.println("Received string message. Subscriber:" + this.name + "\tTopic: " + topic + "\tContent:" + content);
-        sender.sendMessage(content, type);
+		if (type != null) {
+			System.out.println("Received string message. Subscriber:" + this.name + "\tTopic: " + topic + "\tContent:" + content);
+			executor.execute(new MessageTask(content,type));
+		}
     }
+    
+
 }

@@ -17,6 +17,11 @@ public class VHSender {
     VHMsgSpliter vhmsgspliter = VHMsgSpliter.getInstance();
     NVBMsgProcessor nvbMsg = new NVBMsgProcessor();
     TextMsgProcessor textMsg = new TextMsgProcessor();
+    
+	private static VHSender instance = new VHSender();
+	public static VHSender getInstance() {
+		return instance;
+	}
 
     /*
      * get the name of current Char in the VHT
