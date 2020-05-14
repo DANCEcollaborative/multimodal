@@ -222,7 +222,7 @@ public class Register implements BasilicaPreProcessor, TimeoutReceiver
 				source.queueNewEvent(prompt);
 				
 			} else if (me.hasAnnotations("SIMILARITY")) {
-				prompt_message = "Yes, the miniums, medians, maximums, and modes are all the same. Can you find a difference?";
+				prompt_message = "Yes, the minimums, medians, maximums, and modes are all the same. Can you find a difference?";
 				PromptEvent prompt = new PromptEvent(source, prompt_message , "reasoning");
 				source.queueNewEvent(prompt);
 			
@@ -232,7 +232,7 @@ public class Register implements BasilicaPreProcessor, TimeoutReceiver
 				source.queueNewEvent(prompt);
 				
 			} else if (me.hasAnnotations("SYMMETRY")) {
-				prompt_message = "Yes. Finger lengths tend to cluster around the same size but some are much longer. | Ernie, we haven't heard from you. What does this say about people’s finger length?";
+				prompt_message = "Yes. Finger lengths tend to cluster around the same size but some are much longer. | What does this say about the distribution of people’s finger lengths?";
 				PromptEvent prompt = new PromptEvent(source, prompt_message , "reasoning");
 				source.queueNewEvent(prompt);
 				
