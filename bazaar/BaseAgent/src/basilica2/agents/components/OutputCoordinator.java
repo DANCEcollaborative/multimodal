@@ -23,15 +23,6 @@ import edu.cmu.cs.lti.project911.utils.log.Logger;
 import edu.cmu.cs.lti.project911.utils.time.TimeoutReceiver;
 import smartlab.communication.CommunicationManager; 
 
-// import VHjava.VHSender;
-// import VHjava.VHReceiver;
-// import VHjava.VHjava.*;
-// import VHjava.VHJava.MessageProcessor;
-// import MessageProcessor;
-// import VHjava.MessageProcessor; 
-// import VHjava.RendererController;
-// import VHjava.*; 
-
 /**
  * @author dadamson
  */
@@ -261,38 +252,37 @@ public class OutputCoordinator extends Component implements TimeoutReceiver
 		Boolean multimodalMessage = false; 
 		String multiModalField = "multimodal"; 
 		String speechField = "speech";
-		String locationField = "location";
+		String identityField = "identity";
+		// String locationField = "location";
+		// String location = null; 
 	    String multiModalDelim = ";%;";
 		String withinModeDelim = ":";	
-		String location = null; 
 		String messageString; 
 		
 		String text = me.getText();
 		
-		// Get location if it is known
+		// Multimodal message if user is known.
 		String to = me.getDestinationUser();
+		System.err.println("OutputCoordinator, publishMessageToPSI, me.getDestinationUser(): " + to); 
 		if (to != null) {
-			State state = StateMemory.getSharedState(this.getAgent());
-			location = state.getLocation(to);
-			if (location != null) {
-				multimodalMessage = true; 
-			}
+			multimodalMessage = true; 
 		}	
 		
 		// Format multimodal message if appropriate
 		if (multimodalMessage) {
+			System.err.println("OutputCoordinator, publishMessageToPSI: multimodal message");
 			StringBuilder messageBuilder = new StringBuilder(""); 
 			messageBuilder.append(multiModalField);  
-			messageBuilder.append(multiModalDelim + speechField + withinModeDelim + text);  
-			if (location != null) {
-				messageBuilder.append(multiModalDelim + locationField + withinModeDelim + location); 					
+			messageBuilder.append(multiModalDelim + speechField + withinModeDelim + text); 
+			if (to != null) {
+				messageBuilder.append(multiModalDelim + identityField + withinModeDelim + to); 	
 			}
 			messageString = messageBuilder.toString(); 			
 		} 
 		else {
 			messageString = text; 
 		}
-		System.out.println("OutputCoordinator, publishMessagetoPSI: " + messageString);
+		System.err.println("OutputCoordinator, publishMessagetoPSI, message: " + messageString);
 		psiCommunicationManager.msgSender(bazaarToPSITopic,messageString);
 	}
 
