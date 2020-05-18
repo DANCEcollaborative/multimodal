@@ -342,6 +342,7 @@ class ForwardVisualizer(ImageListener):
         self.receive_socket.stop()
         self.image_socket.stop()
         cv2.destroyAllWindows()
+        GV.ended = True
 
     @staticmethod
     def restart_socket(s):
@@ -401,12 +402,9 @@ class ForwardVisualizer(ImageListener):
             else:
                 try:
                     time1 = time.time()
-                    logging("wait time: ", time1 - time0)
-                    print(len(img))
                     self.image_socket.send_img(self.width, self.height, img, form='.jpg')
                     self.send_property()
                     time2 = time.time()
-                    logging("send time: ", time2 - time1)
                 except ValueError:
                     print("ValueError occurred.")
                 except ConnectionAbortedError:
@@ -439,3 +437,5 @@ class ForwardVisualizer(ImageListener):
                 continue
             except ValueError as e:
                 self.restart_socket(self.receive_socket)
+            except OSError as e:
+                print("Socket Closed.")

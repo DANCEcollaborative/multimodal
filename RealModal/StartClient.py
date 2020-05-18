@@ -24,4 +24,7 @@ if __name__ == "__main__":
     visualizer.start()
 
     # Block the main process.
-    time.sleep(1000000)
+    while not GV.ended:
+        pass
+
+    exit(0)

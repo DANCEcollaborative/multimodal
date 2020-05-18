@@ -18,6 +18,9 @@ class GlobalVariables():
     """
     Runtime variables
     """
+    # The flag of whether the program has come to an end.
+    ended = False
+
     # Threading locks of different components.
     locks = dict()
 
@@ -38,7 +41,7 @@ class GlobalVariables():
     """
     Configurations:
     """
-    UseOpenpose = False
+    UseOpenpose = True
     UseFaceRecognition = True
     UsePosition = True
 

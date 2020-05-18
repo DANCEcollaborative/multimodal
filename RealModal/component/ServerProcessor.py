@@ -1,7 +1,9 @@
 from utils.GlobalVaribles import GlobalVariables as GV
+from utils.LoggingUtil import logging
 
 import abc
 import threading
+import base64
 
 from Socket.BaseSocket import BaseTCPSocket
 
@@ -79,7 +81,7 @@ class OpenPoseProcessor(BaseImageProcessor):
             img = img[:, :, :3]
         self.poseKeypoints, _ = self.openpose.find_pose(img)
         GV.locks["OpenPose"].acquire()
-        GV.OpenPoseResult[info['camera_id']] = self.poseKeypoints[:]
+        GV.OpenPoseResult[info['camera_id']] = self.poseKeypoints.copy()
         GV.locks["OpenPose"].release()
 
     def send(self, soc: BaseTCPSocket):
@@ -89,11 +91,11 @@ class OpenPoseProcessor(BaseImageProcessor):
             l = 0
         print("find %d person(s) in the image" % l)
         soc.send_int(l)
-        for i in range(l):
-            print("sending person %d" % i)
-            for j in range(25):
-                for k in range(3):
-                    soc.send_float(self.poseKeypoints[i][j][k])
+        # Send poses only when there are at least one person detected.
+        # This is because self.poseKeypoints will be a very weird value if no people is detected due to some features
+        # or bugs in the  Openpose Library.
+        if l > 0:
+            soc.send_data(base64.b64encode(self.poseKeypoints.tostring()))
 
 
 class PositionProcessor(BaseImageProcessor):

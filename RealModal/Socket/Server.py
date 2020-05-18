@@ -155,7 +155,11 @@ class ImageHandler(DataTransmissionHandler):
         while not self.event.is_set():
             for i, stat in enumerate(self.processer_state):
                 if stat == "Pending":
-                    if self.send_lock.acquire(blocking=False):
-                        self.processer[i].base_send(self.send_socket)
-                        self.processer_state[i] = "Available"
-                        self.send_lock.release()
+                    try:
+                        if self.send_lock.acquire(blocking=False):
+                            self.processer[i].base_send(self.send_socket)
+                            self.processer_state[i] = "Available"
+                            self.send_lock.release()
+                    except Exception as e:
+                        print(e)
+                        raise e

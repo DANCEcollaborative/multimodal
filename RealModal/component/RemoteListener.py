@@ -5,6 +5,8 @@ from Socket.Client import DataTransmissionClient as DTC
 from utils.PositionCalcUtil import *
 from utils.LoggingUtil import logging
 import cv2
+import numpy as np
+import base64
 
 
 class BaseRemoteListener(metaclass=abc.ABCMeta):
@@ -56,15 +58,12 @@ class OpenPoseListener(BaseRemoteListener):
         buf = []
         pose_num = socket.recv_int()
         print("%d pose(s) to receive." % pose_num)
-        for i in range(pose_num):
-            person = []
-            print("receiving pose %d" % i)
-            for j in range(25):
-                x = socket.recv_float()
-                y = socket.recv_float()
-                c = socket.recv_float()
-                person.append([x, y, c])
-            buf.append(person[:])
+        if pose_num > 0:
+            data = socket.recv_data()
+            decoded = base64.b64decode(data)
+            array = np.fromstring(decoded, dtype=np.float32).reshape(pose_num, 25, 3)
+            buf = array.tolist()
+        print(buf)
         return buf
 
     def draw(self, img, buf):
