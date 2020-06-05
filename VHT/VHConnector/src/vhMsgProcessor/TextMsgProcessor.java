@@ -15,6 +15,8 @@ public class TextMsgProcessor {
     //send the text message from Bazaar to VHT through VrExpress
     public String constructTextMsg(String name, String content) {
     	String s = vhmsgspliter.textGetter(content);
+    	System.out.println("!!!!Messages to Rachel!!!!"+s);
+    	//String s = content;
         if (name.equals("Rachel")) {
             return  "vrExpress Rachel User user0003-1570425438621-56-1 <?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n" +
                     "                      <act>\n" +

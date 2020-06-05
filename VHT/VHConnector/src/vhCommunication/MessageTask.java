@@ -1,4 +1,7 @@
 package vhCommunication;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
 import javax.jms.JMSException;
 
 import vhMsgProcessor.*;
@@ -6,6 +9,7 @@ import vhMsgProcessor.*;
 public class MessageTask implements Runnable{
 	String content;
 	String type;
+	private final Map<String,String> identityInfo = new ConcurrentHashMap<>();
 	VHSender sender = VHSender.getInstance();
 	
 	public MessageTask(String content, String type) {

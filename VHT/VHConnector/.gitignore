@@ -90,3 +90,4 @@ out/production/VHjava/vhCommunication/PSISubscriber.class
 *.iml
 .classpath
 .project
+/bin/

@@ -11,6 +11,7 @@ public class VHMsgSpliter {
 	public String msgtype;
 	public String identity;
 	public String text;
+	public String pose;
 	public double coordinate_x;
 	public double coordinate_y;
 	public double coordinate_z;
@@ -26,21 +27,17 @@ public class VHMsgSpliter {
 	
 	//get the message type  (Multimodal = true-->NVBGmessage; multimodal= false -->text message)
 	public String typeGetter (String s) {		
-		Pattern pattern = Pattern.compile("(?<=multimodal:).+?(?=;%;)");
-		Matcher matcher = pattern.matcher(s);
-		String msgtype = null;
-		if (matcher.find()) {
-			String tag = matcher.group(0);
-			System.out.println(tag);
-			if(tag.equals("true")) {
-				msgtype = "NVB";
-			}
-			else if (tag.equals("false")) {
-				msgtype = "text";
-			}
-			this.msgtype = msgtype;
-			//System.out.println(msgtype);
-			return msgtype;
+		if (s.contains("%;speech:")) {
+			this.msgtype = "speech";
+			return "speech";
+		}
+		else if (s.contains("%;position:")) {
+			this.msgtype = "position";
+			return "position";
+		}
+		else if (s.contains("%;pose:")) {
+			this.msgtype = "pose";
+			return "pose";
 		}
 		else {
 			System.out.println("NO MATCH");
@@ -68,7 +65,7 @@ public class VHMsgSpliter {
 	
 	//get the text information if this message is from bazaar.	
 	public String textGetter (String s) {		
-		Pattern pattern = Pattern.compile("(?<=;%;text:)[\\s\\S]*$");
+		Pattern pattern = Pattern.compile("(?<=;%;speech:)[\\s\\S]*$");
 		Matcher matcher = pattern.matcher(s);
 		if (matcher.find()) {
 			String text = matcher.group(0);
@@ -79,8 +76,23 @@ public class VHMsgSpliter {
 		else {
 			System.out.println("NO MATCH");
 			return "NO MATCH TEXT";
+		}		
+	}
+	
+	//get the text information if this message is from bazaar.	
+	public String poseGetter (String s) {		
+		Pattern pattern = Pattern.compile("(?<=;%;pose:)[\\s\\S]*$");
+		Matcher matcher = pattern.matcher(s);
+		if (matcher.find()) {
+			String pose = matcher.group(0);
+			this.pose = pose;
+			//System.out.println(identity);
+			return pose;
 		}
-		
+		else {
+			System.out.println("NO MATCH");
+			return "NO MATCH TEXT";
+		}		
 	}
 	
 	//get the coordinate information if this message is a multi-modal message.	

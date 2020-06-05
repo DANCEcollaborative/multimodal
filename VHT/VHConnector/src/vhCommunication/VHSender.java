@@ -9,8 +9,8 @@ import vhMsgProcessor.*;
 public class VHSender {
 
     public static VHMsg vhmsg;
-    public String name = "Brad";
-    public String msgtype = "text";
+    public String name = "Rachel";
+    public String msgtype = "speech";
 
     public int numMessagesReceived = 0;
     public int m_testSpecialCases = 0;
@@ -68,10 +68,11 @@ public class VHSender {
      * the message type of the received message(text/nvb)
      */
     public void sendMessage(String name, String content, String msgtype) {
-        if (msgtype.equals("text")) {
+        if (msgtype.equals("speech")) {
+        	System.out.println("!!!!Messages to!!!!"+name+content+msgtype);
         	vhmsg.sendMessage(textMsg.constructTextMsg(name, content));
         }
-        else if (msgtype.equals("NVB")) {
+        else if (msgtype.equals("location")) {
         	vhmsg.sendMessage(nvbMsg.constructNVBMsg(name, content));
         }    	
     }
@@ -84,10 +85,10 @@ public class VHSender {
      * the message type of the received message(text/nvb)
      */
     public void sendMessage(String content, String msgtype) {
-        if (msgtype.equals("text")) {
+        if (msgtype.equals("speech")) {
         	vhmsg.sendMessage(textMsg.constructTextMsg(this.name, content));
         }
-        else if (msgtype.equals("NVB")) {
+        else if (msgtype.equals("location")) {
         	vhmsg.sendMessage(nvbMsg.constructNVBMsg(this.name, content));
         } 	
     }
