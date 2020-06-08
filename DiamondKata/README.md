@@ -1,2 +1,0 @@
-# DiamondKata
-Temporary DiamondKata workspace
