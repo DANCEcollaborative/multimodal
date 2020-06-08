@@ -1,3 +1,4 @@
+from Socket.BaseSocket import BaseTCPSocket
 from utils.GlobalVaribles import GlobalVariables as GV
 
 import abc
@@ -12,6 +13,24 @@ import base64
 class BaseRemoteListener(metaclass=abc.ABCMeta):
     def __init__(self, topic=None):
         self.topic = topic
+
+    @staticmethod
+    def receive_properties(socket: BaseTCPSocket) -> dict:
+        prop_dict = dict()
+        prop_str = socket.recv_str()
+        while prop_str != "END":
+            res = prop_str.split(":", 2)
+            if len(res) == 3:
+                prop_name, prop_type, prop_content = res
+                if prop_type == "str":
+                    prop_dict[prop_name] = str(prop_content)
+                elif prop_type == "int":
+                    prop_dict[prop_name] = int(prop_content)
+                elif prop_type == "float":
+                    prop_dict[prop_name] = float(prop_content)
+            prop_str = socket.recv_str()
+            print(prop_str)
+        return prop_dict
 
     @abc.abstractmethod
     def receive(self, socket):
@@ -81,17 +100,36 @@ class PositionDisplayListener(BaseRemoteListener):
         super(PositionDisplayListener, self).__init__(topic)
 
     def receive(self, socket: DTC):
+        logging("In position display listener... receiving")
+        prop_dict = self.receive_properties(socket)
         pos_num = socket.recv_int()
         print("%d position(s) to receive." % pos_num)
         to_send = str(pos_num)
+        raw_info = []
         person = []
         for i in range(pos_num):
             print("receiving person %d" % i)
+            x0 = socket.recv_float()
+            y0 = socket.recv_float()
             x = socket.recv_float()
             y = socket.recv_float()
             z = socket.recv_float()
-            person.append((x, y, z))
-            to_send += f";{x}:{y}:{z}"
+            c = socket.recv_str()
+            raw_info.append((x0, y0, x, y, z, c))
+            print(f"received person {i}, location: ({x0}, {y0})")
+        for i, (x0, y0, x, y, z, c) in enumerate(raw_info):
+            if GV.UseDepthCamera:
+                result = GV.LocationQuerier.query(None, prop_dict["timestamp"], Point2D(x0, y0))
+                # TODO:[URGENT!] camera coordination transformation
+                # result = camera[cid].camera_to_real
+                if p_is_zero(result):
+                    person.append((x, y, z))
+                else:
+                    person.append((result.x, result.y, result.z))
+                to_send += f";person_{c}&{result.x}:{result.y}:{result.z}"
+            else:
+                person.append((x, y, z))
+                to_send += f";person_{c}&{x}:{y}:{z}"
         logging(to_send)
         self.update_layout_image(GV.CornerPosition, person)
         GV.manager.send("Python_PSI_Location", to_send)

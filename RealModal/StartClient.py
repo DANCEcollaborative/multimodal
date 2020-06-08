@@ -1,7 +1,8 @@
 from utils.GlobalVaribles import GlobalVariables as GV
 
 from communication.CommunicationManager import CommunicationManager as CM
-from communication.Listener import ForwardVisualizer
+from component.ForwardListener import ForwardVisualizer
+from component.LocationListener import LocationQuerier
 from component.RemoteListener import FaceRecognitionListener, OpenPoseListener, PositionDisplayListener
 
 import time
@@ -18,9 +19,14 @@ if __name__ == "__main__":
     if GV.UseOpenpose:
         ROP = OpenPoseListener("OpenPose")
         visualizer.add(ROP)
-    if GV.UseFaceRecognition:
+    if GV.UsePosition:
         RPD = PositionDisplayListener("Position")
         visualizer.add(RPD)
+
+    if GV.UseDepthCamera:
+        LQ = LocationQuerier(GV.manager, "PSI_Python_AnswerKinect", "Python_PSI_QueryKinect")
+        GV.LocationQuerier = LQ
+
     visualizer.start()
 
     # Block the main process.

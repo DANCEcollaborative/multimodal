@@ -132,3 +132,7 @@ dmypy.json
 
 # pycharm file
 .idea/
+
+# runtime file
+temp*.*
+screenlog.0

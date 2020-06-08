@@ -38,15 +38,21 @@ class GlobalVariables():
     # The communication manager used by client to communicate with Psi.
     manager = None
 
+    # The listener used to query the mapping between color image and depth image.
+    LocationQuerier = None
+
     """
     Configurations:
     """
     UseOpenpose = True
-    UseFaceRecognition = True
+    UseFaceRecognition = False
     UsePosition = True
 
     # Which backend is used to calculate position information
-    PositionBackend = "FaceRecognition"
+    PositionBackend = "OpenPose"
+
+    # Whether to use data from depth camera to get people location.
+    UseDepthCamera = True
 
     # The ip address to establish sockets between clients and server.
     server_addr_in = ("128.2.204.127", 5416)
