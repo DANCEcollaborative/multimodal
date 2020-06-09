@@ -161,36 +161,10 @@ public class MultiModalFilter extends BasilicaAdapter
         State.Student user = state.getStudentById(identity);
         if (user == null) {
         	PresenceEvent pe = new PresenceEvent(source,identity,PresenceEvent.PRESENT);
-        	handlePresenceEvent(source,pe);
+        	source.processEvent(pe);
         }     	
 	}
-	
-	private void handlePresenceEvent(final InputCoordinator source, PresenceEvent pe)
-	{
-		State olds = StateMemory.getSharedState(agent);
-		State news;
-		if (pe.getType().equals(PresenceEvent.PRESENT))
-		{
-			if (olds != null)
-			{
-				news = State.copy(olds);
-			}
-			else
-			{
-				news = new State();
-			}
-			news.addStudent(pe.getUsername());
-			Logger.commonLog(getClass().getSimpleName(),Logger.LOG_NORMAL,"STUDENTS COUNT: " + news.getStudentCount());
-			StateMemory.commitSharedState(news, agent);
-
-		}
-		else if (pe.getType().equals(PresenceEvent.ABSENT))
-		{
-			State updateState = State.copy(olds);
-			updateState.removeStudent(pe.getUsername());
-			StateMemory.commitSharedState(updateState, agent);
-		}
-	}
+            
 	
 	private void poseUpdate(final InputCoordinator source, MessageEvent me, poseEventType poseType)
 	{
@@ -210,15 +184,15 @@ public class MultiModalFilter extends BasilicaAdapter
 	        s.setLocation(identity, location);
 	        StateMemory.commitSharedState(s, agent);
 	        if (checkDistances) {
-	            checkDistances(source, me, identity);            	
+	            checkDistances(source, me, identity, location);            	
 	        }   			
 		}
 
 	}
 	
-	private void checkDistances (InputCoordinator source, MessageEvent me, String identity) {
+	private void checkDistances (InputCoordinator source, MessageEvent me, String identity, String myLocation) {
 		System.err.println("===== Checking distances ======");
-		Double[] myCoordinates = getLocationCoordinates(identity);	
+		Double[] myCoordinates = locationStringToDoubles(myLocation);	
 		
 		StringBuilder myCoordinatesString = new StringBuilder("");
 		myCoordinatesString.append("x: " + Double.toString(myCoordinates[0]));
@@ -258,18 +232,22 @@ public class MultiModalFilter extends BasilicaAdapter
 	}
 	
 	private Double[] getLocationCoordinates (String identity) {
-		Double[] locationCoordinates = new Double[3]; 
-		String[] locationStrings = new String[3];
         State s = StateMemory.getSharedState(agent);
 		String rawLocation = s.getLocation(identity); 
 		if (rawLocation != null) {
 			System.err.println("raw location coordinates for " + identity + ": " + rawLocation);
-			locationStrings = rawLocation.split(withinModeDelim,3);
-			for (int i=0; i<3; i++)
-				locationCoordinates[i] = Double.valueOf(locationStrings[i]);
-			return locationCoordinates; 
+			return locationStringToDoubles(rawLocation);
 		}
 		else return null;		
+	}
+	
+	private Double[] locationStringToDoubles(String locationString) {
+		Double[] locationCoordinates = new Double[3]; 
+		String[] locationStrings = new String[3];
+		locationStrings = locationString.split(withinModeDelim,3);
+		for (int i=0; i<3; i++)
+			locationCoordinates[i] = Double.valueOf(locationStrings[i]);
+		return locationCoordinates; 
 	}
 	
 	private Double calculateDistance (Double[] coordinatesA, Double[] coordinatesB ) {
