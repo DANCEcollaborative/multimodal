@@ -103,9 +103,9 @@ class Point3D():
 
     def __sub__(self, other):
         return Point3D(
-            self.x + other.x,
-            self.y + other.y,
-            self.z + other.z
+            self.x - other.x,
+            self.y - other.y,
+            self.z - other.z
         )
 
     def __mul__(self, other):

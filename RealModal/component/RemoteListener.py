@@ -104,7 +104,7 @@ class PositionDisplayListener(BaseRemoteListener):
         prop_dict = self.receive_properties(socket)
         pos_num = socket.recv_int()
         print("%d position(s) to receive." % pos_num)
-        to_send = str(pos_num)
+        to_send = str(pos_num) + ';' + str(prop_dict["timestamp"])
         raw_info = []
         person = []
         for i in range(pos_num):
