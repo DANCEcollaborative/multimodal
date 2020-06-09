@@ -1,19 +1,19 @@
 package VirtualHumanClient;
 
-import VHjava.VHReceiver;
-import VHjava.VHSender;
+import VHjava.VHCharacterReceiver;
+import VHjava.VHCharacterSender;
 
 public class test {
     public static void main(String[] args) {
-        VHReceiver receiver = new VHReceiver();
-        VHSender sender = new VHSender();
+        VHCharacterReceiver receiver = new VHCharacterReceiver();
+        VHCharacterSender sender = new VHCharacterSender();
         CharacterLoader loader;
         String charname;
         if (args.length >= 1) {
             charname = args[0];
         }
         else {
-            charname = "Brad";
+            charname = "Rachel";
         }
         loader = new CharacterLoader(sender, receiver, charname);
         loader.changeCharacter();

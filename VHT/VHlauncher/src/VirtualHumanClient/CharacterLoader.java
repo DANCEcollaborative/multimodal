@@ -1,21 +1,21 @@
 package VirtualHumanClient;
 
-import VHjava.VHReceiver;
-import VHjava.VHSender;
+import VHjava.VHCharacterReceiver;
+import VHjava.VHCharacterSender;
 
 import java.util.Arrays;
 
 public class CharacterLoader {
-    VHSender sender;
-    VHReceiver receiver;
+    VHCharacterSender sender;
+    VHCharacterReceiver receiver;
     String character;
     String[] vhmsgs;
-    public CharacterLoader(VHSender sender, VHReceiver receiver)
+    public CharacterLoader(VHCharacterSender sender, VHCharacterReceiver receiver)
     {
         this(sender, receiver, "Rachel");
     }
 
-    public CharacterLoader(VHSender sender, VHReceiver receiver, String character) {
+    public CharacterLoader(VHCharacterSender sender, VHCharacterReceiver receiver, String character) {
         this.sender = sender;
         this.receiver = receiver;
         this.character = character;
@@ -84,7 +84,7 @@ public class CharacterLoader {
         System.out.println("now it's time to change character");
         for (String s: vhmsgs) {
             System.out.println("Sending vhmsg: " + s);
-            VHSender.vhmsg.sendMessage(s);
+            VHCharacterSender.vhmsg.sendMessage(s);
         }
     }
 }

@@ -1,13 +1,13 @@
 package VirtualHumanClient;
 
-import VHjava.VHReceiver;
-import VHjava.VHSender;
+import VHjava.VHCharacterReceiver;
+import VHjava.VHCharacterSender;
 
 public class Controller {
-    private VHSender sender;
-    private VHReceiver receiver;
+    private VHCharacterSender sender;
+    private VHCharacterReceiver receiver;
     private String name;
-    public Controller(VHSender sender, VHReceiver receiver) {
+    public Controller(VHCharacterSender sender, VHCharacterReceiver receiver) {
         this.sender = sender;
         this.receiver = receiver;
     }
@@ -21,16 +21,16 @@ public class Controller {
             String s = receiver.pollVhmsg();
             if (s.contains("vrProcEnd renderer")) {
                 System.out.println("now it's time to kill all components");
-                VHSender.vhmsg.sendMessage("vrKillComponent all");
+                VHCharacterSender.vhmsg.sendMessage("vrKillComponent all");
                 break;
             }
             else if (s.contains("launcher requestPath")) {
                 System.out.println("Someone is requesting working path");
-                VHSender.vhmsg.sendMessage("launcher path " + System.getProperty("user.dir"));
+                VHCharacterSender.vhmsg.sendMessage("launcher path " + System.getProperty("user.dir"));
             }
             else if (s.contains("launcher requestChar")) {
                 System.out.println("Someone is requesting the character");
-                VHSender.vhmsg.sendMessage("launcher char " + name);
+                VHCharacterSender.vhmsg.sendMessage("launcher char " + name);
             }
         }
     }

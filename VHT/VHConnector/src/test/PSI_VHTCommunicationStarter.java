@@ -4,13 +4,12 @@ import smartlab.communication.CommunicationManager;
 import smartlab.test.TestByteSubscriber;
 import smartlab.test.TestHybridSubscriber;
 import smartlab.test.TestTextSubscriber;
-import vhCommunication.PSISubscriber;
+import smartlab.vhcommunication.PSISubscriber;
 
 /*this is the main function to start the communication between VHT and PSI*/ 
 
 public class PSI_VHTCommunicationStarter {
-
-	static public void main(String[] args) {
+	static public void main(String[] args) {        
         CommunicationManager manager = new CommunicationManager();
         PSISubscriber nvbmsg = new PSISubscriber("PSI_NVBG_Location");
         PSISubscriber textmsg = new PSISubscriber("PSI_VHT_Text");

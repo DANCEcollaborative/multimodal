@@ -1,12 +1,12 @@
 package test;
 import smartlab.communication.CommunicationManager;
-import vhCommunication.RendererController;
-import vhCommunication.VHReceiver;
-import vhCommunication.VHSender;
-import vhCommunication.PSISubscriber;
-import vhMsgProcessor.NVBMsgProcessor;
-import vhMsgProcessor.TextMsgProcessor;
-import vhMsgProcessor.VHMsgSpliter;
+import smartlab.vhcommunication.PSISubscriber;
+import smartlab.vhcommunication.RendererController;
+import smartlab.vhcommunication.VHReceiver;
+import smartlab.vhcommunication.VHSender;
+import smartlab.vhmsgprocessor.NVBMsgProcessor;
+import smartlab.vhmsgprocessor.TextMsgProcessor;
+import smartlab.vhmsgprocessor.VHMsgSpliter;
 
 public class TestVHmsg {
 	public static void main(String[] args) {
