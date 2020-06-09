@@ -13,6 +13,7 @@
     using Microsoft.Psi.Imaging;
     using Microsoft.Psi.Media;
     using Microsoft.Psi.Speech;
+    using Apache.NMS;
 
     class Program
     {
@@ -37,6 +38,8 @@
 
         public static readonly object SendToBazaarLock = new object();
         public static readonly object SendToPythonLock = new object();
+
+        public static DateTime LastLocSendTime = new DateTime();
 
         static void Main(string[] args)
         {
@@ -111,6 +114,14 @@
 
         private static void ProcessLocation(byte[] b)
         {
+            DateTime time = DateTime.Now;
+            /*
+            if (time.Subtract(LastLocSendTime).TotalSeconds < 0.5)
+            {
+                return;
+            }
+            */
+            LastLocSendTime = time;
             string text = Encoding.ASCII.GetString(b);
             string[] infos = text.Split(';');
             int num = int.Parse(infos[0]);
@@ -126,7 +137,7 @@
             if (s != null)
             {
                 Console.WriteLine($"Send location message to VHT: multimodal:false;%;identity:someone;%;text:{s}");
-                manager.SendText(TopicToVHText, $"multimodal:false;%;identity:someone;%;text:{s}");
+                manager.SendText(TopicToVHText, s);
             }
         }
 
@@ -143,18 +154,25 @@
                 // var video = store.OpenStream<Shared<EncodedImage>>("Image");
                 if (!AudioOnly)
                 {
-                    MediaCapture webcam = new MediaCapture(pipeline, 1280, 720, 30, true);
+                    MediaCapture webcam = new MediaCapture(pipeline, 1280, 720, 30);
 
                     // var decoded = video.Out.Decode().Out;
                     ImageSendHelper helper = new ImageSendHelper(manager, "webcam", Program.TopicToPython, Program.SendingImageWidth, Program.SendToPythonLock);
                     webcam.Out.Do(helper.SendImage);
+                    Console.WriteLine($"send image to sever {helper.Name}");
+
                     // var encoded = webcam.Out.EncodeJpeg(90, DeliveryPolicy.LatestMessage).Out;
                 }
 
                 // Send audio part to Bazaar
 
                 // var audio = store.OpenStream<AudioBuffer>("Audio");
-                IProducer<AudioBuffer> audio = new AudioCapture(pipeline, new AudioCaptureConfiguration() { OutputFormat = WaveFormat.Create16kHz1Channel16BitPcm() });
+                var audioConfig = new AudioCaptureConfiguration()
+                {
+                    OutputFormat = WaveFormat.Create16kHz1Channel16BitPcm(),
+                    DropOutOfOrderPackets = true
+                };
+                IProducer<AudioBuffer> audio = new AudioCapture(pipeline, audioConfig);
 
                 var vad = new SystemVoiceActivityDetector(pipeline);
                 audio.PipeTo(vad);
@@ -191,6 +209,7 @@
         {
             Console.WriteLine($"Send text message to Bazaar: {result.Text}");
             manager.SendText(TopicToBazaar, result.Text);
+            //manager.SendText(TopicToVHText, $"multimodal:false;%;identity:someone;%;text:{result.Text}");
         }
 
         private static void Pipeline_PipelineCompleted(object sender, PipelineCompletedEventArgs e)

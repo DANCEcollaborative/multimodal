@@ -41,8 +41,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="IdentityInfo.cs" />
     <Compile Include="PositionUtil.cs" />
-    <Compile Include="PositionCalcUtil.cs" />
     <Compile Include="IdentityInfoProcess.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
