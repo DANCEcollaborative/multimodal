@@ -31,9 +31,9 @@ public class VHMsgSpliter {
 			this.msgtype = "speech";
 			return "speech";
 		}
-		else if (s.contains("%;position:")) {
-			this.msgtype = "position";
-			return "position";
+		else if (s.contains("%;location:")) {
+			this.msgtype = "location";
+			return "location";
 		}
 		else if (s.contains("%;pose:")) {
 			this.msgtype = "pose";

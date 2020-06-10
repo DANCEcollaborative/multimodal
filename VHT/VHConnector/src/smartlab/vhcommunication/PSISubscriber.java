@@ -14,7 +14,6 @@ import org.apache.activemq.ActiveMQConnectionFactory;
 /*
  * Subscriber the message from PSI.
  */
-
 public class PSISubscriber implements ISLTextSubscriber{
 	String name;
 	VHSender sender = VHSender.getInstance();
@@ -54,6 +53,16 @@ public class PSISubscriber implements ISLTextSubscriber{
 			executor.execute(new MessageTask(content,type));
 		}
     }
-    
+	/*    public void listen() {
+	    while (true) {
+	        String s = receiver.pollVhmsg();
+	        if (s.contains("vrProcEnd renderer")) {
+	            System.out.println("now it's time to kill all components");
+	            VHSender.vhmsg.sendMessage("vrKillComponent all");
+	            receiver.stop();
+	            break;
+	        }
+	    }
+	}*/   
 
 }

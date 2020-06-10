@@ -2,6 +2,7 @@ package smartlab.vhcommunication;
 
 import java.io.*;
 
+
 /*
  * Set the background and Char in the Renderer
  */
@@ -92,6 +93,17 @@ public class RendererController {
                 String[] temp = s.split(" ");
                 System.out.println(temp[2]);
                 return temp[2];
+            }
+        }
+    }
+    
+    public void listen() {
+        while (true) {
+            String s = receiver.pollVhmsg();
+            if (s.contains("vrProcEnd renderer")) {
+                System.out.println("now it's time to kill all components");
+                VHSender.vhmsg.sendMessage("vrKillComponent all");
+                break;
             }
         }
     }
