@@ -1,7 +1,9 @@
+import math
+
 COLOR_RANGE = {
     'Black': [((0, 0, 0), (180, 255, 46))],
     'Gray': [((0, 0, 46), (180, 43, 220))],
-    'White': [((0, 0, 220), (180, 30, 255))],
+    'White': [((0, 0, 220), (180, 43, 255))],
     'Red': [((0, 43, 46), (10, 255, 255)),
             ((155, 43, 46), (180, 255, 255))],
     'Orange': [((10, 43, 46), (25, 255, 255))],
@@ -13,9 +15,7 @@ COLOR_RANGE = {
 }
 
 
-def bgr2hsv(b: float or tuple, g: float = None, r: float = None):
-    if g is None:
-        b, g, r = b
+def bgr2hsv(b: float, g: float, r: float):
     b /= 255.
     g /= 255.
     r /= 255.
@@ -35,6 +35,12 @@ def bgr2hsv(b: float or tuple, g: float = None, r: float = None):
     elif v == b:
         h = 240 + 60 * (r - g) / (v - bgr_min)
     else:
+        print("bgr_max:", bgr_max)
+        print("bgr_min:", bgr_min)
+        print("v:", v)
+        print("r:", r)
+        print("g:", g)
+        print("b:", b)
         assert False, "Your computer is broken."
     if h < 0:
         h = h + 360
@@ -46,6 +52,10 @@ def bgr2hsv(b: float or tuple, g: float = None, r: float = None):
 
 
 def get_color_name(b: float or tuple, g: float = None, r: float = None):
+    if g is None:
+        b, g, r = b
+    if math.isnan(b) or math.isnan(g) or math.isnan(r):
+        return "Unknown"
     h, s, v = bgr2hsv(b, g, r)
     return get_color_name_by_hsv(h, s, v)
 
@@ -59,4 +69,7 @@ def get_color_name_by_hsv(h: float, s: float, v: float):
             h_max, s_max, v_max = color_max
             if h_min <= h <= h_max and s_min <= s <= s_max and v_min <= v <= v_max:
                 return color_name
+    print("h: ", h)
+    print("s: ", s)
+    print("v: ", v)
     raise ValueError("Undefined Color")

@@ -40,6 +40,8 @@ class OpenPoseUtil():
         # I have no idea why this happens.
         cv2.imwrite("temp.png", img)
         imageToProcess = cv2.imread("temp.png")
+        if imageToProcess is None:
+            return np.array([]), None
         datum.cvInputData = imageToProcess
         self.opWrapper.emplaceAndPop([datum])
         return datum.poseKeypoints, datum.cvOutputData

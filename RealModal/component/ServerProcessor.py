@@ -14,6 +14,13 @@ from utils.ColorUtil import get_color_name
 
 import numpy as np
 
+
+def add_processor(processor):
+    GV.Processor.append(processor)
+    GV.ProcessorState.append("Available")
+    GV.ProcessorLock.append(threading.Lock())
+
+
 class BaseImageProcessor(metaclass=abc.ABCMeta):
     def __init__(self, topic=None):
         # TODO: auto synchronize the topic(may not be possible)
@@ -22,16 +29,27 @@ class BaseImageProcessor(metaclass=abc.ABCMeta):
 
     def base_send(self, soc: BaseTCPSocket):
         soc.send_str(f"type:{self.topic}:{self.current['camera_id']}")
-        self.send(soc)
+        try:
+            self.send(soc)
+        except Exception as e:
+            print(e)
 
     @abc.abstractmethod
     def send(self, soc: BaseTCPSocket):
         pass
 
-    def base_process(self, info, handler, pos):
-        self.current = info.copy()
-        self.process(info)
-        handler.processer_state[pos] = "Pending"
+    def base_process(self, info, pos, ip_addr):
+        if GV.ProcessorLock[pos].acquire(blocking=False):
+            GV.ProcessorState[pos] = f"Processing:{ip_addr}"
+            self.current = info.copy()
+            try:
+                self.process(info)
+                GV.ProcessorState[pos] = f"Pending:{ip_addr}"
+            except Exception as e:
+                print(e)
+                GV.ProcessorState[pos] = "Available"
+            finally:
+                GV.ProcessorLock[pos].release()
 
     @abc.abstractmethod
     def process(self, info):
@@ -119,7 +137,7 @@ class PositionProcessor(BaseImageProcessor):
             self.process_face_rec(info)
 
     def process_face_rec(self, info):
-        camera_ids = list(GV.CameraMapping.keys())
+        camera_ids = list(GV.CameraList.keys())
         # check whether face recognition is enabled
         if not GV.UseFaceRecognition:
             if not self.backendNotFound:
@@ -146,7 +164,7 @@ class PositionProcessor(BaseImageProcessor):
                 h, w = info['img'].shape[:2]
                 x0 = float(x0) / w
                 y0 = float(y0) / h
-                line_center = GV.CameraMapping[camera_ids[0]](Point2D(x0, y0))
+                line_center = GV.CameraList[camera_ids[0]].image_mapping(Point2D(x0, y0))
                 p_center = line_center.find_point_by_z(GV.SingleCameraDistance)
                 self.positions.append((Point2D(x0, y0), p_center.to_vec()))
         else:
@@ -154,9 +172,8 @@ class PositionProcessor(BaseImageProcessor):
             pass
 
     def process_openpose(self, info):
-        # TODO: add position recognition when using a single camera.
         # TODO: [URGENT!!] here, the info and GV.OpenPoseResult might not point to a same image.
-        camera_ids = list(GV.CameraMapping.keys())
+        camera_ids = list(GV.CameraList.keys())
         # check whether face recognition is enabled
         if not GV.UseOpenpose:
             if not self.backendNotFound:
@@ -194,14 +211,24 @@ class PositionProcessor(BaseImageProcessor):
                     continue
                 x0, y0, _ = points[use_index]
                 h, w = info['img'].shape[:2]
-                cropped_area = info['img'][int(y0)+5:int(y0)+15, int(x0)-5:int(x0)+5]
-                cropped_color = np.mean(cropped_area, (0, 1))
-                cloth_color = get_color_name(cropped_color)
+
+                # clothes color detection
+                if is_zero(points[neck_index]):
+                    cloth_color = "Unknown"
+                else:
+                    cropped_area = info['img'][int(y0)+5:int(y0)+15, int(x0)-5:int(x0)+5]
+                    if sum(cropped_area.shape) > 0:
+                        cropped_color = np.mean(cropped_area, (0, 1))
+                        cloth_color = get_color_name(cropped_color)
+                    else:
+                        cloth_color = "Unknown"
                 x0 = float(x0) / w
                 y0 = float(y0) / h
-                line_center = GV.CameraMapping[camera_ids[0]](Point2D(x0, y0))
+                line_center = GV.CameraList[camera_ids[0]].image_mapping(Point2D(x0, y0))
                 p_center = line_center.find_point_by_z(GV.SingleCameraDistance)
-                self.positions.append((Point2D(x0, y0), p_center.to_vec(), cloth_color))
+                self.positions.append(
+                    (Point2D(x0, y0), GV.CameraList[cid].world_mapping(p_center).to_vec(), cloth_color)
+                )
         else:
             # Determine which body key point is used to calculate positions
             num_nose = 0
@@ -227,12 +254,12 @@ class PositionProcessor(BaseImageProcessor):
             start_point = []
             direction = []
             for cid in camera_ids:
-                start_point.append(GV.CameraPosition[cid])
+                start_point.append(GV.CameraList[cid].pos_camera)
                 direction.append([])
                 for points in keypoints[cid]:
                     keypoint = points[use_index]
                     if not is_zero(keypoint):
-                        direction[-1].append(GV.CameraMapping[cid](keypoint[0], keypoint[1]))
+                        direction[-1].append(GV.CameraList[cid].image_mapping(Point2D(keypoint[0], keypoint[1])))
 
             # Calculate position
             self.positions = calc_position(start_point, direction)

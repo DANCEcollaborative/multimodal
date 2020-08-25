@@ -146,7 +146,6 @@ class ForwardVisualizer(ImageListener):
     def send_process(self):
         self.image_socket.start()
         while self.running:
-            time0 = time.time()
             if 'camera_id' not in self.property or self.property['camera_id'] not in self.base64_image_buffer:
                 continue
             if self.base64_image_lock.acquire(blocking=False):
@@ -166,10 +165,8 @@ class ForwardVisualizer(ImageListener):
                 return
             else:
                 try:
-                    time1 = time.time()
                     self.image_socket.send_img(self.width, self.height, img, form='.jpg')
                     self.send_property()
-                    time2 = time.time()
                 except ValueError:
                     print("ValueError occurred.")
                 except ConnectionAbortedError:

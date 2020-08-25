@@ -40,5 +40,5 @@ class LocationQuerier(BaseListener):
                 float(x),
                 float(y),
                 float(z)
-            ) * 100
+            )
         self.state = "Pending"
