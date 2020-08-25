@@ -38,11 +38,11 @@
     </prompt>
   
     <prompt strategy="task" id="ASSIGN_ROLES">
-        <text>For the first test case, why don't you start as the Driver, [NAME1], and [NAME2], why don't you start as the Navigator?</text>
+        <text>Driver::For the first test case, why don't you start as the Driver, Eric?|Navigator::Joe, why don't you start as the Navigator?</text>
     </prompt>
   
     <prompt strategy="task" id="ASSIGN_ROLES_MULTI">
-        <text>For the first test case, why don't you start as the Driver, [NAME1], and [NAME2], why don't you start as the Navigator? |Remember to stay at least 6 feet apart for social-distancing as you move to your seats.</text>
+        <text>For the first test case, why don't you start as the Driver, Eric, and Joe, why don't you start as the Navigator? |Remember to stay at least 6 feet apart for social-distancing as you move to your seats.</text>
     </prompt>
   
     <prompt strategy="task" id="GIVE_UP_ON_INTRODUCTIONS">
@@ -50,7 +50,7 @@
     </prompt>
   
     <prompt strategy="task" id="SOCIAL_DISTANCE_CAUTION">
-        <text>>As you move about the room, remember to stay at least 6 feet apart for social-distancing.</text>
+        <text>As you move about the room, remember to stay at least 6 feet apart for social-distancing.</text>
     </prompt>
   
     <prompt strategy="task" id="NEXT_TESTCASE_WHEN_SEATED">

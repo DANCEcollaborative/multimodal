@@ -11,11 +11,9 @@ services:
     volumes:    
      - mysql_data:/var/lib/mysql
     environment:
-      MYSQL_ROOT_PASSWORD: smoot
-      MYSQL_USER: "local"
-      MYSQL_PASSWORD: "local"
-    ports:
-     - "8089:3306"  # let outside world see 8089
+      MYSQL_ROOT_PASSWORD: ******
+      MYSQL_USER: "******"
+      MYSQL_PASSWORD: "******"
     networks:
     - bazaar-net
   bazaar:
@@ -25,19 +23,12 @@ services:
     container_name: bazaar
     depends_on:
      - nodechat
+    ports:
+     - "8000:80"
     networks:
     - bazaar-net
-  front:
-    build: ./ha-proxy
-    image: bazaar/haproxy
-    container_name: bazaar-haproxy
-    ports:
-      - "80:80"
-      - "443:443"
-    depends_on:
-      - bazaar
-    networks:
-      - bazaar-net
+    environment:
+      - DEBUG=*,engine,socket.io* node server_docker.js
 networks:
   bazaar-net:
     driver: bridge
