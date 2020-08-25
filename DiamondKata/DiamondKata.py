@@ -55,9 +55,9 @@ class DiamondTest(unittest.TestCase):
         f.write("test case a passed")
         f.close()
 
-    def Xtest_b(self):
+    def test_b(self):
         """" Test input 'B' outputs a diamond """
-        self.assertEqual(" A\nERROR"
+        self.assertEqual(" A\n"
                          "B B\n"
                          " A\n", Diamond().print_up_to('B'))
         filename = self.path + 'room-' + self.room + '-test-b' + self.suffix
@@ -65,9 +65,9 @@ class DiamondTest(unittest.TestCase):
         f.write("test case b passed")
         f.close()
 
-    def Xtest_c(self):
+    def test_c(self):
         """" Test input 'C' outputs a bigger diamond """
-        self.assertEqual("  A\nERROR"
+        self.assertEqual("  A\n"
                          " B B\n"
                          "C   C\n"
                          " B B\n"
@@ -77,9 +77,9 @@ class DiamondTest(unittest.TestCase):
         f.write("test case c passed")
         f.close()
 
-    def Xtest_d(self):
+    def test_d(self):
         """" Test input 'D' outputs an even bigger diamond """
-        self.assertEqual("   A\nERROR"
+        self.assertEqual("   A\n"
                          "  B B\n"
                          " C   C\n"
                          "D     D\n"
