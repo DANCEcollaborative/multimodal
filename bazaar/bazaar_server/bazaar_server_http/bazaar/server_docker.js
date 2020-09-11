@@ -89,7 +89,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Adding content security policy
 app.use(function(req, res, next) {
-    res.setHeader("Content-Security-Policy", "default-src 'self'; connect-src 'self' ws://brandy.lti.cs.cmu.edu/bazsocket/ http://brandy.lti.cs.cmu.edu/bazsocket/; style-src 'self' https://fonts.googleapis.com/css https://rawgit.com/gtomar/help-button-javascript/master/discussion.css 'unsafe-inline'; script-src 'self' https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js https://rawgit.com/gtomar/stylesheets/master/colors.js https://rawgit.com/gtomar/stylesheets/master/jquery.sortable.js 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com/s/oxygen/v9/2sDfZG1Wl4LcnbuKjk0mRUe0Aw.woff2 https://fonts.gstatic.com/s/oxygen/v9/2sDfZG1Wl4LcnbuKgE0mRUe0A4Uc.woff2; img-src http://www.dnr.sc.gov/climate/sco/Education/wxmap/wxmap.gif http://brandy.lti.cs.cmul.edu/favicon.ico"); 
+    res.setHeader("Content-Security-Policy", "default-src 'self'; connect-src 'self' ws://misty.lti.cs.cmu.edu/bazsocket/ http://misty.lti.cs.cmu.edu/bazsocket/; style-src 'self' https://fonts.googleapis.com/css https://rawgit.com/gtomar/help-button-javascript/master/discussion.css 'unsafe-inline'; script-src 'self' https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js https://rawgit.com/gtomar/stylesheets/master/colors.js https://rawgit.com/gtomar/stylesheets/master/jquery.sortable.js 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com/s/oxygen/v9/2sDfZG1Wl4LcnbuKjk0mRUe0Aw.woff2 https://fonts.gstatic.com/s/oxygen/v9/2sDfZG1Wl4LcnbuKgE0mRUe0A4Uc.woff2; img-src http://www.dnr.sc.gov/climate/sco/Education/wxmap/wxmap.gif http://misty.lti.cs.cmul.edu/favicon.ico"); 
     return next();
 });
 
@@ -161,7 +161,7 @@ app.get('/login*', function (req, res)
         isValidRequest = isValid;
     });
 
-    var query = 'INSERT INTO nodechat.consent (roomname, userid, consent) VALUES ('+connection.escape(req.query.roomName + req.query.roomId)+','+connection.escape(req.query.mturkid)+','+(req.query.consent!=="undefined" && req.query.consent=="agree" ? 1 : 0)+')';
+    var query = 'INSERT INTO nodechat.consent (roomname, userid, consent) VALUES ('+connection.escape(req.query.roomName + req.query.roomId)+','+connection.escape(req.query.id)+','+(req.query.consent!=="undefined" && req.query.consent=="agree" ? 1 : 0)+')';
     console.log(query);
     connection.query(query, function(err, rows, fields) {
         if (err) console.log(err);
@@ -169,9 +169,12 @@ app.get('/login*', function (req, res)
 
     if(1){
         teamNumber = req.query.roomId;
-        //console.log(teamNumber);
+        console.log("apt.get('/login*) teamNumber: " + teamNumber);
         setTeam_(teamNumber,req,provider,logger,res);
-   }
+    }
+    else {
+        console.log("apt.get('/login*) error");
+    }
 });
 
 app.post('/login*', function (req, res)
@@ -271,9 +274,9 @@ function setTeam_(teamNumber,req,provider,logger,res)
         if(req.query.html != undefined) html_page = req.query.html;
 
         var roomname = req.query.roomName + teamNumber;
-        var url = localURL + '/chat/' + roomname  + '/' + req.query.mturkid + '/' +
+        var url = localURL + '/chat/' + roomname  + '/' + req.query.id + '/' +
                                                              req.query.username + '/' + req.query.perspective + '/' + '?html=' + html_page + '&forum=' + req.query.forum;
-
+        console.log("setTeam_, url: " + url);
         res.writeHead(301,{Location: url});
         res.end();
 
@@ -320,7 +323,10 @@ app.get('/chat*', function (req, res)
 	var html_page = 'index';
         if(req.query.html != undefined) html_page = req.query.html;
 
-	res.sendFile(__dirname + '/' + html_page + '.html');
+	var fileName = __dirname + '/' + html_page + '.html';
+        console.log("get /chat, sendFile, fileName = " + fileName);
+	res.sendFile(fileName);
+	// res.sendFile(__dirname + '/' + html_page + '.html');
 });
 
 app.get('/discussionnew.css', function (req,res) 
