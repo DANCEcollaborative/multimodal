@@ -29,9 +29,10 @@ class GlobalVariables():
     opu = None  # Openpose utility
 
     # Processors
-    Processor = []
-    ProcessorState = []
-    ProcessorLock = []
+    Processor = []  # store the instances used for processing images
+    ProcessorState = []  # store the states of the instances.
+                         # values can be "Available", "Processing:{ip}" and "Pending:{ip}"
+    ProcessorLock = []  # store possible locks used in processors
 
     # Recent results from different components.
     OpenPoseResult = dict()
@@ -46,9 +47,14 @@ class GlobalVariables():
     # The listener used to query the mapping between color image and depth image.
     LocationQuerier = None
 
+    # The utility used to get next idiom for the solitaire.
+    IdiomUtil = None
+
     """
     Configurations:
     """
+    PSIImageFormat = "jpg"
+
     UseOpenpose = True
     UseFaceRecognition = False
     UsePosition = True
@@ -58,6 +64,12 @@ class GlobalVariables():
 
     # Whether to use data from depth camera to get people location.
     UseDepthCamera = False
+
+    # Which Dialog Agent is used to response
+    DialogAgentInfo = {
+        "agent_type": "FileReader",
+        "filename": "data/TestAgent"
+    }
 
     # The ip address to establish sockets between clients and server.
     server_addr_in = ("128.2.204.127", 7416)

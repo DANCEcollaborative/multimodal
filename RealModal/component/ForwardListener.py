@@ -1,5 +1,5 @@
 from communication.BaseListener import ImageListener
-from utils.GlobalVaribles import GlobalVariables as GV
+from utils.GlobalVariables import GlobalVariables as GV
 
 import _thread
 import abc
@@ -124,12 +124,16 @@ class ForwardVisualizer(ImageListener):
         if self.running:
             if 'camera_id' not in self.property:
                 return
+            pair = self.decode_msg(img, GV.PSIImageFormat)
+            if pair is None:
+                return
+            else:
+                raw_img, base64_img = pair
             if self.raw_image_lock.acquire(blocking=False):
-                decoded_img = self.decode_msg(img)
-                self.raw_image_buffer[self.property['camera_id']] = decoded_img
+                self.raw_image_buffer[self.property['camera_id']] = raw_img
                 self.raw_image_lock.release()
             if self.base64_image_lock.acquire(blocking=False):
-                self.base64_image_buffer[self.property['camera_id']] = img
+                self.base64_image_buffer[self.property['camera_id']] = base64_img
                 self.base64_image_lock.release()
 
     def send_property(self):
@@ -151,11 +155,7 @@ class ForwardVisualizer(ImageListener):
             if self.base64_image_lock.acquire(blocking=False):
                 img = self.base64_image_buffer[self.property['camera_id']]
                 self.base64_image_lock.release()
-                # convert to .jpg to minimum image size.
-                img = self.decode_msg(img)
-                if img is None:
-                    continue
-                img = base64.b64encode(cv2.imencode(".jpg", img)[1]).decode()
+                img = img.decode()
             else:
                 continue
             while not self.ready_to_send:

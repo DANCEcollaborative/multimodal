@@ -1,10 +1,11 @@
-from utils.GlobalVaribles import GlobalVariables as GV
+from utils.GlobalVariables import GlobalVariables as GV
 
 import _thread
 import abc
 import base64
 import numpy as np
 import threading
+import cv2
 
 from .CommunicationManager import CommunicationManager as CM
 
@@ -16,8 +17,7 @@ class BaseListener(metaclass=abc.ABCMeta):
     """
     def __init__(self, cm: CM):
         """
-            Initialization of a l
-            istener.
+            Initialization of a listener.
         :param cm: CommunicationManager
             Communication manager you're using.
         """
@@ -190,22 +190,37 @@ class ImageListener(BaseListener, metaclass=abc.ABCMeta):
         self.width = int(w)
         self.height = int(h)
 
-    def decode_msg(self, msg):
+    def decode_msg(self, msg, img_format="raw"):
         """
             Try to decode a base64 message to a image.
         :param msg:
             The base64 message to decode.
-        :return: img: numpy.array->shape(height, width, num_chanel)
-            Gray 8bit/BGR 24bit/BGRA 32bit image array, capable with cv2.
+        :param img_format:
+            The format of image data received from
+        :return: (raw_img: numpy.array->shape(height, width, num_channel), base64_img: str)
+            raw_img:
+                Gray 8bit/BGR 24bit/BGRA 32bit image array, capable with cv2.
+            base64_img:
+                Base64 encoded image data for network transmitting, use .jpg format to compress.
             If decoding process failed, return None instead.
         """
         b = base64.b64decode(msg)
         try:
-            img = np.frombuffer(b, dtype=np.uint8).reshape(self.height, self.width, -1)
+            if img_format == "raw":
+                img = np.frombuffer(b, dtype=np.uint8).reshape(self.height, self.width, -1)
+                base64_img = base64.b64encode(cv2.imencode(".jpg", img)[1])
+            elif img_format == "jpg":
+                base64_img = msg.encode()
+                to_decode = np.asarray(bytearray(b), dtype="uint8")
+                print(type(to_decode))
+                img = cv2.imdecode(to_decode, cv2.IMREAD_COLOR)
+            else:
+                raise ValueError("Unrecognized image format.")
         # TODO: specify possible exceptions here.
         except Exception as e:
-            img = None
-        return img
+            print(e)
+            return None
+        return img, base64_img
 
     def process_message(self, headers, msg):
         """
@@ -246,3 +261,33 @@ class ImageListener(BaseListener, metaclass=abc.ABCMeta):
         """
         _thread.start_new_thread(self.process_message, (headers, msg))
 
+
+class TextListener(BaseListener, metaclass=abc.ABCMeta):
+    """
+        The class to handle text message only.
+        This class is the base class of all the listeners which specifically listen to the text messages.
+    """
+    def __init__(self, cm, topic=None):
+        """
+        Initialization for a text listener.
+        :param cm: The communication manager used to receive and send stomp messages
+        :param topic: The topic used for receiving stomp messages
+        """
+        super(TextListener, self).__init__(cm)
+        self.receiveLock = threading.Lock()
+        self.topic = topic
+        if topic is not None:
+            self.subscribe_to(self.topic)
+
+    @abc.abstractmethod
+    def process_text(self, text):
+        pass
+
+    def process_message(self, headers, msg):
+        if self.receiveLock.acquire(blocking=False):
+            text = msg
+            self.process_text(text)
+            self.receiveLock.release()
+
+    def on_message(self, headers, msg):
+        _thread.start_new_thread(self.process_message, (headers, msg))

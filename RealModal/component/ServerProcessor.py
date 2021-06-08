@@ -1,4 +1,4 @@
-from utils.GlobalVaribles import GlobalVariables as GV
+from utils.GlobalVariables import GlobalVariables as GV
 from utils.LoggingUtil import logging
 
 import abc

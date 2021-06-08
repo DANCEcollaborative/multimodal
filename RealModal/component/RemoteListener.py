@@ -1,5 +1,5 @@
 from Socket.BaseSocket import BaseTCPSocket
-from utils.GlobalVaribles import GlobalVariables as GV
+from utils.GlobalVariables import GlobalVariables as GV
 
 import abc
 from Socket.Client import DataTransmissionClient as DTC
