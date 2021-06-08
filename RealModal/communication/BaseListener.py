@@ -212,7 +212,6 @@ class ImageListener(BaseListener, metaclass=abc.ABCMeta):
             elif img_format == "jpg":
                 base64_img = msg.encode()
                 to_decode = np.asarray(bytearray(b), dtype="uint8")
-                print(type(to_decode))
                 img = cv2.imdecode(to_decode, cv2.IMREAD_COLOR)
             else:
                 raise ValueError("Unrecognized image format.")

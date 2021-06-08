@@ -13,7 +13,7 @@ class GlobalVariables():
     Debugging mode will output more log.
     Using logging() instead of print() to get debugging time log.
     """
-    debug = True
+    debug = False
 
     """
     Runtime variables
@@ -67,15 +67,19 @@ class GlobalVariables():
 
     # Which Dialog Agent is used to response
     DialogAgentInfo = {
-        "agent_type": "FileReader",
-        "filename": "data/TestAgent"
+        "agent_type": "Solitaire",
+        "url": "https://misty.lti.cs.cmu.edu/bazaar/login?roomName=diamondkatapsi&roomId=10010&id=1&username=yansen",
+        "GUI": True,
     }
 
     # The ip address to establish sockets between clients and server.
-    server_addr_in = ("128.2.204.127", 7416)
-    server_addr_out = ("128.2.204.127", 7417)
-    client_addr_in = ("brandy.lti.cs.cmu.edu", 7417)
-    client_addr_out = ("brandy.lti.cs.cmu.edu", 7416)
+    server_addr_in = ("128.2.204.127", 5416)
+    server_addr_out = ("128.2.204.127", 5417)
+    client_addr_in = ("brandy.lti.cs.cmu.edu", 5417)
+    client_addr_out = ("brandy.lti.cs.cmu.edu", 5416)
+
+    # The frequency that the server processes a frame.
+    process_freq = 0.4
 
     """
     Camera information:
@@ -126,3 +130,5 @@ class GlobalVariables():
     """
     display_size = (500, 500)
     display_margin = 50
+
+    frame_process_time = {}

@@ -1,6 +1,7 @@
 from utils.GlobalVariables import GlobalVariables as GV
 from utils.LoggingUtil import logging
 
+import time
 import abc
 import threading
 import base64
@@ -26,6 +27,7 @@ class BaseImageProcessor(metaclass=abc.ABCMeta):
         # TODO: auto synchronize the topic(may not be possible)
         self.topic = topic
         self.current = None
+        self.last_time = 0
 
     def base_send(self, soc: BaseTCPSocket):
         soc.send_str(f"type:{self.topic}:{self.current['camera_id']}")
@@ -39,9 +41,13 @@ class BaseImageProcessor(metaclass=abc.ABCMeta):
         pass
 
     def base_process(self, info, pos, ip_addr):
+        if time.time() - self.last_time < GV.process_freq:
+            return
+        print(f"Current state for {type(self)} at timestamp {info['timestamp']}: {GV.ProcessorState[pos]}")
         if GV.ProcessorLock[pos].acquire(blocking=False):
             GV.ProcessorState[pos] = f"Processing:{ip_addr}"
             self.current = info.copy()
+            self.last_time = time.time()
             try:
                 self.process(info)
                 GV.ProcessorState[pos] = f"Pending:{ip_addr}"
@@ -268,6 +274,7 @@ class PositionProcessor(BaseImageProcessor):
         soc.send_str(f"timestamp:int:{self.timestamp}")
         soc.send_str("END")
         l = len(self.positions)
+        print(f"sending message for timestamp: {self.timestamp}")
         print("find %d person(s) in the space" % l)
         soc.send_int(l)
         for i, (p, (x, y, z), c) in enumerate(self.positions):

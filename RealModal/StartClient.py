@@ -30,11 +30,16 @@ if __name__ == "__main__":
 
     visualizer.start()
 
-    # DL = DialogListener(GV.manager, "PSI_Bazaar_Text", "Python_PSI_Text", **GV.DialogAgentInfo)
+    DL = DialogListener(GV.manager, "PSI_Bazaar_Text", "Python_PSI_Text", **GV.DialogAgentInfo)
 
     # Block the main process.
     while not GV.ended:
-        time.sleep(2)
-        pass
+        s = input()
+        if s == "end":
+            GV.ended = True
+            break
+        DL.process_text(s)
+        # time.sleep(2)
+        # pass
 
     exit(0)

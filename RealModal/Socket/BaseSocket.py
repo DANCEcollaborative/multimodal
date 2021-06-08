@@ -49,6 +49,7 @@ class BaseTCPSocket():
         """
         # Send the length of the byte array.
         l = len(bytedata)
+        #print(bytedata, l)
         to_send = str(l)
         while len(to_send) < 16:
             to_send = "0" + to_send

@@ -139,6 +139,8 @@ class ForwardVisualizer(ImageListener):
     def send_property(self):
         for prop_name in self.property.keys():
             prop_value = self.property[prop_name]
+            if prop_name == "timestamp":
+                GV.frame_process_time[self.property["timestamp"]] = time.time()
             if isinstance(prop_value, str):
                 self.image_socket.send_str("%s:str:%s" % (prop_name, prop_value))
             elif isinstance(prop_value, int):

@@ -8,6 +8,7 @@ from utils.LoggingUtil import logging
 import cv2
 import numpy as np
 import base64
+import time
 
 
 class BaseRemoteListener(metaclass=abc.ABCMeta):
@@ -29,7 +30,7 @@ class BaseRemoteListener(metaclass=abc.ABCMeta):
                 elif prop_type == "float":
                     prop_dict[prop_name] = float(prop_content)
             prop_str = socket.recv_str()
-            print(prop_str)
+            # print(prop_str)
         return prop_dict
 
     @abc.abstractmethod
@@ -82,7 +83,7 @@ class OpenPoseListener(BaseRemoteListener):
             decoded = base64.b64decode(data)
             array = np.fromstring(decoded, dtype=np.float32).reshape(pose_num, 25, 3)
             buf = array.tolist()
-        print(buf)
+        # print(buf)
         return buf
 
     def draw(self, img, buf):
@@ -105,6 +106,14 @@ class PositionDisplayListener(BaseRemoteListener):
         pos_num = socket.recv_int()
         print("%d position(s) to receive." % pos_num)
         to_send = str(pos_num) + ';' + str(prop_dict["timestamp"])
+        print(len(GV.frame_process_time), GV.frame_process_time.keys())
+        print(prop_dict['timestamp'])
+        print(f"For frame {prop_dict['timestamp']}, processing time: {time.time() - GV.frame_process_time[prop_dict['timestamp']]}")
+        current_ts = prop_dict['timestamp']
+        keys = GV.frame_process_time.keys()
+        for key in list(keys):
+            if key <= current_ts:
+                GV.frame_process_time.pop(key)
         raw_info = []
         person = []
         for i in range(pos_num):
