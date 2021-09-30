@@ -7,10 +7,12 @@ public class TestCommunication {
         CommunicationManager manager = new CommunicationManager();
         TestTextSubscriber textSubscriber = new TestTextSubscriber("PSI_Bazaar_Text");
         TestTextSubscriber textSubscriber2 = new TestTextSubscriber("PSI_VHT_Text");
+        TestTextSubscriber textSubscriber3 = new TestTextSubscriber("Bazaar_PSI_Text");
         TestByteSubscriber byteSubscriber = new TestByteSubscriber("ByteSubscriber0");
         TestHybridSubscriber hybridSubscriber = new TestHybridSubscriber("HybridSubscriber0");
         manager.subscribe(textSubscriber, "PSI_Bazaar_Text");
         manager.subscribe(textSubscriber2, "PSI_VHT_Text");
+        manager.subscribe(textSubscriber3, "Bazaar_PSI_Text");
         manager.subscribe(byteSubscriber, "testbytes");
         manager.subscribe(hybridSubscriber, "test");
         manager.subscribe(hybridSubscriber, "testbytes");
