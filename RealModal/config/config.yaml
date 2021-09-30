@@ -1,0 +1,93 @@
+# Meta information for the configuration file.
+config_name: "Sigdial 2020 - Demo"
+config_version: 1.0
+
+# Debugging mode will output more log.
+logging:
+  logging_level: info
+  report_level: info
+  report_period: 10
+
+# The ip address to establish sockets between clients and server.
+address: &address
+  ip: "128.2.204.127"
+  port:
+    upstream: 5516
+    downstream: 5517
+
+component: &component
+  openpose:
+    topic: OpenPose
+    process_interval: 0.4
+    init_param:
+      path: "/usr0/home/rcmurray/git/openpose"
+  position:
+    topic: Position
+    backend: OpenPose
+    topic_to_psi: Python_PSI_Location
+    process_interval: 0.4
+    # When using one camera only, the default distance to the camera
+    single_camera_distance: 55.
+    # Display size: define the position display size.
+    display_size: [500, 500]
+    display_margin: 50
+    # Room information
+    room_corner:
+      - [0, 0, 0]
+      - [378.2, 0, 0]
+      - [378.2, 416.7, 0]
+      - [0, 284.5, 0]
+
+# Define Messengers for client
+# You can add listeners here, the key should be corresponding to the name you register for the module
+# You can add arguments for the messenger/listener as you define
+# For example, here, topic under openpose and position are topics used to communicate with server.
+client:
+  forward_visualizer:
+    # The ip address and the ports of the server
+    address:
+      <<: *address
+    # The topic used by ActiveMQ to receive message from PSI
+    topic: PSI_Python_Image
+    # Decide the format of images received from PSI
+    psi_image_format: jpg
+    # Which cameras are visualized in client end.
+    display_camera:
+      - webcam
+    # Which listeners are attached to the client.
+    listeners:
+      <<: *component
+  location_querier:
+    topic_in: PSI_Python_AnswerKinect
+    topic_out: Python_PSI_QueryKinect
+  dialog_messenger:
+    active: False
+    topic_in: PSI_Bazaar_Text
+    topic_out: Python_PSI_Text
+    agent_type: Solitaire
+    # url: "https://bazaar.lti.cs.cmu.edu/bazaar/login?roomName=diamondkatapsi&roomId=10021&id=1&username=ChasBot"
+    url: "http://localhost/chat/FO178/1/ChasBot/1/?html=share_chat"
+    GUI: True
+
+# Define processors and handlers for server
+# You can add processors here, and you can change the type of the handler by modifying recv_server and send_server
+server:
+  address:
+    <<: *address
+  recv_server: image_receive
+  send_server: data_send
+  processors:
+    <<: *component
+
+
+# Camera information:
+camera:
+  webcam:
+    type: webcam
+    pos_camera: [29.2, 12.7, 125.7]
+    dir_camera: [357.1, 319.2, 19.08]
+    dir_x: [-17.27, 19.26, 1.01284]
+    theta: 0.684644277715545
+    whratio: 1.777778 # 16. / 9
+
+

@@ -1,6 +1,7 @@
 from DialogAgents.BaseAgent import BaseAgent
-from utils.LoggingUtil import logging
+from common.logprint import get_logger
 
+logger = get_logger(__name__)
 
 class FileReaderAgent(BaseAgent):
     def __init__(self, *args, **kwargs):
@@ -10,9 +11,9 @@ class FileReaderAgent(BaseAgent):
             with open(filename, 'r', encoding='UTF-8') as fin:
                 self.scripts = fin.readlines()
         except Exception as e:
-            print(e)
+            logger.warning(f"Exception {type(e)} occurred when loading scripts, traceback:", exc_info=True)
             self.scripts = []
-        logging(self.scripts)
+        logger.debug(self.scripts)
         self.current = 0
 
     def respond(self, s: str) -> str:

@@ -1,7 +1,4 @@
-
-from utils.GlobalVariables import GlobalVariables as GV
 from DialogAgents.BaseAgent import BaseAgent
-from utils.LoggingUtil import logging
 
 from selenium import webdriver
 import selenium.common.exceptions

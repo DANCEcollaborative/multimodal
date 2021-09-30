@@ -1,45 +1,59 @@
-from utils.GlobalVariables import GlobalVariables as GV
-
-from communication.CommunicationManager import CommunicationManager as CM
-from component.ForwardListener import ForwardVisualizer
-from component.LocationListener import LocationQuerier
-from component.RemoteListener import FaceRecognitionListener, OpenPoseListener, PositionDisplayListener
-from component.DialogListener import DialogListener
-
-import time
+from common.logprint import get_logger
+from common.Configuration import load_yaml
 
 if __name__ == "__main__":
-    # Initialize communication manager to receive massage from Psi.
-    GV.manager = CM()
+    # Get configurations
+    # TODO: add support for argparse
+    config_path = "config/config.yaml"
+    config = load_yaml(config_path)
 
-    # Add components and start the listener.
-    visualizer = ForwardVisualizer(GV.manager, GV.client_addr_in, GV.client_addr_out, "PSI_Python_Image")
-    if GV.UseFaceRecognition:
-        RFR = FaceRecognitionListener("FaceRecognition")
-        visualizer.add(RFR)
-    if GV.UseOpenpose:
-        ROP = OpenPoseListener("OpenPose")
-        visualizer.add(ROP)
-    if GV.UsePosition:
-        RPD = PositionDisplayListener("Position")
-        visualizer.add(RPD)
+    if "logging" in config:
+        log_config = config["logging"]
+        level = log_config.get("logging_level", "info")
+        logger = get_logger(__name__, level=level, set_global=True)
+    else:
+        logger = get_logger(__name__, level="info", set_global=True)
 
-    if GV.UseDepthCamera:
-        LQ = LocationQuerier(GV.manager, "PSI_Python_AnswerKinect", "Python_PSI_QueryKinect")
-        GV.LocationQuerier = LQ
+    from components.messenger import *
+    from components.client import *
+    from common.Report import ReportManager
+    import _thread
+    import time
 
-    visualizer.start()
+    # set up report manager
+    if "logging" in config:
+        report_period = config.logging.get("report_period", 60)
+        report_level = config.logging.get("report_level", "info")
+        rm = ReportManager(report_period, report_level)
+    else:
+        rm = ReportManager()
 
-    DL = DialogListener(GV.manager, "PSI_Bazaar_Text", "Python_PSI_Text", **GV.DialogAgentInfo)
+    if "room_corner" in config:
+        corner_list = []
+        for corner in config["room_corner"]:
+            corner_list.append(Point3D(corner))
+        GV.register("room.corner", corner_list)
 
-    # Block the main process.
-    while not GV.ended:
-        s = input()
-        if s == "end":
-            GV.ended = True
-            break
-        DL.process_text(s)
-        # time.sleep(2)
-        # pass
+    if "client" in config:
+        # Initialize communication manager to receive massage from ActiveMQ.
+        GV.register("stomp_manager", CM())
 
-    exit(0)
+        # Initialize messengers
+        for key in config["client"]:
+            messenger_cls = GV.get_messenger_class(key)
+            assert messenger_cls is not None, f"Messenger name {key} not defined. Please register it before using."
+            messenger = messenger_cls(config["client"][key])
+            GV.register(f"messenger.{key}", messenger)
+            if config["client"][key].get("report", True):
+                rm.register(messenger)
+        # Start messengers
+        for key in config["client"]:
+            _thread.start_new_thread(GV.get(f"messenger.{key}").start, ())
+
+    rm.start()
+
+    while not GV.get("ended", False):
+        time.sleep(2)
+    for key in config["client"]:
+        GV.get(f"messenger.{key}").stop()
+    rm.stop()

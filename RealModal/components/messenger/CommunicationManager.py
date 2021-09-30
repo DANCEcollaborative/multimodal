@@ -1,9 +1,12 @@
 import stomp
+from common.logprint import get_logger
+
+logger = get_logger(__name__)
 
 
 class CommunicationManager():
     """
-        This class is used to communicate with other part(PSI etc.) through stomp(ActiveMQ).
+        This class is used to communicate with other part(PSI etc.) through messenger(ActiveMQ).
         Generally, you only need to get one instance to handle all the communication works.
     """
     def __init__(self):
@@ -18,11 +21,11 @@ class CommunicationManager():
 
     def send(self, topic, msg):
         """
-            Send a message through stomp protocol.
-            NOTICE: with stomp, python can only send byte messages.
+            Send a message through messenger protocol.
+            NOTICE: with messenger, python can only send byte messages.
         :param topic:
             The topic in ActiveMQ.
-            Note that prefix /topic/ is used in original stomp protocol, but in ActiveMQ it is automatically omitted.
+            Note that prefix /topic/ is used in original messenger protocol, but in ActiveMQ it is automatically omitted.
             Thus we add the /topic/ prefix before to get compatible with ActiveMQ.
         :param msg:
             The message to send. It will be sent as a byte message whatever its original type is.
@@ -35,7 +38,7 @@ class CommunicationManager():
             Different listeners are allowed to subscribe to the same topic, and a listener is allowed to subscribe to
             different topics.
             A listener must implement `on_message` method to handle the incoming message. Headers (containing the topic
-            information in the `destination` field) and contents of the stomp message will be passed separately.
+            information in the `destination` field) and contents of the messenger message will be passed separately.
         :param listener:
             The subscriber. on_message(self, headers, massage) should be implemented to handle the incoming message.
         :param topic:
@@ -44,13 +47,13 @@ class CommunicationManager():
         if id(listener) in self.connections:
             # Prevent subscribe to a topic for multiple times.
             if topic in self.topics[id(listener)]:
-                print("Listener %s has already subscribed to topic %s." % (str(listener), topic))
+                logger.warning("Listener %s has already subscribed to topic %s." % (str(listener), topic))
                 return
             else:
                 self.connections[id(listener)].subscribe('/topic/%s' % topic)
                 self.topics[id(listener)].append(topic)
         else:
-            # Create a new stomp connection for a new listener.
+            # Create a new messenger connection for a new listener.
             conn = stomp.Connection10()
             conn.set_listener("listener_%d_%d" % (self.num, id(listener)), listener)
             conn.connect()
@@ -69,13 +72,13 @@ class CommunicationManager():
         """
         if id(listener) in self.connections:
             if topic not in self.topics[id(listener)]:
-                print("Listener %s hasn't subscribed to topic %s" % (str(listener), topic))
+                logger.warning("Listener %s hasn't subscribed to topic %s" % (str(listener), topic))
                 return
             else:
                 self.connections[id(listener)].unsubscribe("/topic/%s" % topic)
                 self.topics[id(listener)].remove("topic")
         else:
-            print("Listener %s hasn't subscribed to anything" % (str(listener)))
+            logger.warning("Listener %s hasn't subscribed to anything" % (str(listener)))
 
     def __del__(self):
         for listener_id in self.connections:

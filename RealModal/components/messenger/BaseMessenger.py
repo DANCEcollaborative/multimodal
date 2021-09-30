@@ -1,4 +1,4 @@
-from utils.GlobalVariables import GlobalVariables as GV
+from common.GlobalVariables import GV
 
 import _thread
 import abc
@@ -6,22 +6,33 @@ import base64
 import numpy as np
 import threading
 import cv2
+from common.Report import ReportCallback
+from common.logprint import get_logger
 
-from .CommunicationManager import CommunicationManager as CM
+logger = get_logger(__name__)
 
 
-class BaseListener(metaclass=abc.ABCMeta):
+@GV.register_messenger("base_messenger")
+class BaseMessenger(ReportCallback, metaclass=abc.ABCMeta):
     """
-    Abstract base class for all the listeners receiving messages from stomp.
-    You could define your own class for handling stomp message but I strongly recommend you to derive from this class.
+    Abstract base class for all the listeners receiving messages from messenger.
+    You could define your own class for handling messenger message but I strongly recommend you to derive from this class.
     """
-    def __init__(self, cm: CM):
+    def __init__(self, config):
         """
             Initialization of a listener.
-        :param cm: CommunicationManager
-            Communication manager you're using.
+        :param config: Omega.DictConfig
+            Configurations.
         """
+        super().__init__()
+        cm = GV.get("stomp_manager")
+        assert cm is not None, \
+            "ActiveMQ is not initialized, please register a messenger manager before creating messengers."
         self.cm = cm
+        self.config = config
+
+    def send(self, *args, **kwargs):
+        self.cm.send(*args, **kwargs)
 
     def subscribe_to(self, topic):
         """
@@ -43,7 +54,7 @@ class BaseListener(metaclass=abc.ABCMeta):
     def parse_topic(headers):
         """
             Parse the topic from the header.
-            Since the original stomp protocol will pack the topic in ActiveMQ with /topic/, this method will get the
+            Since the original messenger protocol will pack the topic in ActiveMQ with /topic/, this method will get the
             real topic sent by ActiveMQ.
         :param headers: dict
             The header of the message. The `destination` field must be reserved.
@@ -53,19 +64,26 @@ class BaseListener(metaclass=abc.ABCMeta):
         return headers['destination'].split('/', 2)[-1]
 
     @abc.abstractmethod
-    def on_message(self, headers, msg):
+    def on_message(self, msg):
         """
             An abstract method to handle incoming message. Every subclass that is not a abstract class should implement
             this method.
         :param headers: dict
-            The stomp protocol header in dict form. Keys are field names and values are contents.
+            The messenger protocol header in dict form. Keys are field names and values are contents.
         :param msg: str
-            The message sent by stomp protocol.
+            The message sent by messenger protocol.
         """
         pass
 
+    def start(self):
+        pass
 
-class ImageListener(BaseListener, metaclass=abc.ABCMeta):
+    def stop(self):
+        pass
+
+
+@GV.register_messenger("image_messenger")
+class ImageMessenger(BaseMessenger, metaclass=abc.ABCMeta):
     """
         The class to handle image message only.
         This class is the base class of all the listeners which specifically listen to the image messages.
@@ -73,13 +91,11 @@ class ImageListener(BaseListener, metaclass=abc.ABCMeta):
         The `*_Size` topic is for determine the width and height of the image, The `*_Image` topic is for the raw image
         data, and `*_Prop` is for additional properties including camera_id, timestamp and whatever you think is needed.
     """
-    def __init__(self, cm, topic=None, decode=True):
+    def __init__(self, config):
         """
             Initialization of a ImageListener.
             Call this base initialization method when you're initialize your class to ensure the topics are properly
             subscribed to.
-        :param cm: CommunicationManager
-            The communication manager you're using.
         :param topic: str
             The topic name you're using.
             Do not include `_Image` suffix, they'll be automatically added.
@@ -87,8 +103,9 @@ class ImageListener(BaseListener, metaclass=abc.ABCMeta):
             If set `True`, The image will be decoded to real image data(np.array) before passing to `process_image`.
             Otherwise, The base64 format will be preserved.
         """
-        super(ImageListener, self).__init__(cm)
+        super(ImageMessenger, self).__init__(config)
         self.receiveLock = threading.Lock()
+        topic = config.get("topic", None)
         if topic is not None:
             self.image_topic = topic + "_Image"
             self.size_topic = topic + "_Size"
@@ -103,7 +120,7 @@ class ImageListener(BaseListener, metaclass=abc.ABCMeta):
         self.height = None
         self.width = None
         self.timestamp = None
-        self.decode = decode
+        self.decode = config.get("decode", True)
         self.property = dict()
 
     def set_image_topic(self, topic):
@@ -217,11 +234,11 @@ class ImageListener(BaseListener, metaclass=abc.ABCMeta):
                 raise ValueError("Unrecognized image format.")
         # TODO: specify possible exceptions here.
         except Exception as e:
-            print(e)
+            logger.warning(f"Exception {type(e)} occurred when decoding message, traceback:", exc_info=True)
             return None
         return img, base64_img
 
-    def process_message(self, headers, msg):
+    def process_message(self, msg):
         """
             Parse the incoming message. Classify it to image/size/property and call the corresponding method for
             further processing.
@@ -230,10 +247,12 @@ class ImageListener(BaseListener, metaclass=abc.ABCMeta):
             TODO: add a queue and set an adjustable limitation to the number of messages that can be processed at the
             same time.
         :param headers: dict
-            Header of the stomp message containing the topic information.
+            Header of the messenger message containing the topic information.
         :param msg: str
             The message to be classified.
         """
+        headers = msg.headers
+        msg = msg.body
         flag = self.receiveLock.acquire(blocking=False)
         topic = self.parse_topic(headers)
         if flag:
@@ -249,44 +268,47 @@ class ImageListener(BaseListener, metaclass=abc.ABCMeta):
                 self.process_property(msg)
             self.receiveLock.release()
 
-    def on_message(self, headers, msg):
+    def on_message(self, msg):
         """
             Derived from BaseListener.
             Start a new thread to process the message.
         :param headers:
-            Header of the stomp message containing the topic information.
+            Header of the messenger message containing the topic information.
         :param msg:
             The message to process.
         """
-        _thread.start_new_thread(self.process_message, (headers, msg))
+        _thread.start_new_thread(self.process_message, (msg,))
 
 
-class TextListener(BaseListener, metaclass=abc.ABCMeta):
+@GV.register_messenger("text_messenger")
+class TextMessenger(BaseMessenger, metaclass=abc.ABCMeta):
     """
         The class to handle text message only.
         This class is the base class of all the listeners which specifically listen to the text messages.
     """
-    def __init__(self, cm, topic=None):
+    def __init__(self, config):
         """
         Initialization for a text listener.
-        :param cm: The communication manager used to receive and send stomp messages
-        :param topic: The topic used for receiving stomp messages
+        :param cm: The communication manager used to receive and send messenger messages
+        :param topic: The topic used for receiving messenger messages
         """
-        super(TextListener, self).__init__(cm)
+        super(TextMessenger, self).__init__(config)
         self.receiveLock = threading.Lock()
-        self.topic = topic
-        if topic is not None:
+        self.topic = config.get("topic", None)
+        if self.topic is not None:
             self.subscribe_to(self.topic)
 
     @abc.abstractmethod
     def process_text(self, text):
         pass
 
-    def process_message(self, headers, msg):
+    def process_message(self, msg):
+        headers = msg.headers
+        msg = msg.body
         if self.receiveLock.acquire(blocking=False):
             text = msg
             self.process_text(text)
             self.receiveLock.release()
 
-    def on_message(self, headers, msg):
-        _thread.start_new_thread(self.process_message, (headers, msg))
+    def on_message(self, msg):
+        _thread.start_new_thread(self.process_message, (msg,))

@@ -1,4 +1,4 @@
-from utils.GlobalVariables import GlobalVariables as GV
+from common.GlobalVariables import GlobalVariables as GV
 from utils.IdiomUtil import IdiomUtil
 from DialogAgents.BaseAgent import BaseAgent
 import random

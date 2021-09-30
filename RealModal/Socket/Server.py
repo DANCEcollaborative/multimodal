@@ -1,4 +1,4 @@
-from utils.GlobalVariables import GlobalVariables as GV
+from common.GlobalVariables import GV
 
 import threading
 import _thread
@@ -6,10 +6,10 @@ from socketserver import ThreadingTCPServer, BaseRequestHandler
 from socket import socket, AF_INET, SOCK_STREAM
 from Socket.BaseSocket import BaseTCPSocket
 
-from component.ServerProcessor import \
-    BaseImageProcessor, FaceRecognitionProcessor, OpenPoseProcessor, PositionProcessor
 
-from utils.LoggingUtil import logging
+from common.logprint import get_logger
+
+logger = get_logger(__name__)
 
 
 class Server():
@@ -62,7 +62,7 @@ class SimpleTCPServer(BaseTCPSocket):
             self.socket_server.bind(self.addr)
             self.socket_server.listen(5)
         c, c_addr = self.socket_server.accept()
-        print("New connection from address: ", c_addr)
+        logger.info("New connection from address: ", c_addr)
         self.tcp_socket = c
 
     def stop(self, socket_only=True):
@@ -76,13 +76,13 @@ class SimpleTCPServer(BaseTCPSocket):
             try:
                 self.tcp_socket.close()
             except Exception as e:
-                print(e)
+                logger.warning(f"Exception {type(e)} occurred when closing socket, traceback:", exc_info=True)
         if not socket_only:
             if self.socket_server is not None:
                 try:
                     self.socket_server.close()
                 except Exception as e:
-                    print(e)
+                    logger.warning(f"Exception {type(e)} occurred when closing server, traceback:", exc_info=True)
 
     def restart(self):
         """
@@ -93,11 +93,12 @@ class SimpleTCPServer(BaseTCPSocket):
         self.start()
 
 
+@GV.register_handler("data_transmission")
 class DataTransmissionHandler(BaseRequestHandler, BaseTCPSocket):
     """
     Define a basic handler which aims to send and receive data from clients.
     Different from SimpleTCPServer, it:
-    1. must be used as a component of the Server class.
+    1. must be used as a components of the Server class.
     2. will try to find an available port to create a new socket. This port cannot be defined in advance.
     Refer to BaseRequestHandler for more details.
     """
@@ -115,6 +116,7 @@ class DataTransmissionHandler(BaseRequestHandler, BaseTCPSocket):
         super().handle()
 
 
+@GV.register_handler("image_receive")
 class ImageReceiveHandler(DataTransmissionHandler):
     """
     Define a handler which aims to receive image data from the local machine.
@@ -123,7 +125,7 @@ class ImageReceiveHandler(DataTransmissionHandler):
         super().setup()
 
     def finish(self):
-        print("ImageReceiveHandler terminated a request from: ", self.client_address)
+        logger.info(f"ImageReceiveHandler terminated a request from: {self.client_address}")
         super().finish()
 
     def handle(self):
@@ -131,7 +133,7 @@ class ImageReceiveHandler(DataTransmissionHandler):
         self.start()
 
     def start(self):
-        print("ImageReceiveHandler received a new request from: ", self.client_address)
+        logger.info(f"ImageReceiveHandler received a new request from: {self.client_address}")
         self.recv_process()
 
     def recv_process(self):
@@ -145,11 +147,11 @@ class ImageReceiveHandler(DataTransmissionHandler):
                 img = self.recv_img()
                 if img is None:
                     continue
-                logging("Received Image:", img.shape)
+                logger.debug(f"Received Image: {img.shape}")
 
                 # Receive the properties of the image including timestamp, camera_id and other user-defined properties.
                 temp = self.recv_str()
-                logging(temp)
+                logger.debug(temp)
                 info = dict()
                 info["img"] = img
                 while temp != "END":
@@ -163,21 +165,25 @@ class ImageReceiveHandler(DataTransmissionHandler):
                         elif prop_type == "float":
                             info[prop_name] = float(prop_content)
                     temp = self.recv_str()
-                    logging(temp)
+                    logger.debug(temp)
 
                 # Check the processors. Feed data to free processors in another thread.
-                for i, stat in enumerate(GV.ProcessorState):
-                    if stat == "Available":
-                        _thread.start_new_thread(GV.Processor[i].base_process, (info, i, self.client_address[0]))
+                for i, state in enumerate(GV.get("processor.state")):
+                    if state == "Available":
+                        _thread.start_new_thread(
+                            GV.get("processor.entity")[i].base_process,
+                            (info, i, self.client_address[0])
+                        )
             except (ConnectionResetError, ValueError, IOError) as e:
-                print("Connection terminated")
+                logger.info("Connection terminated")
                 self.event.set()
                 break
             except Exception as e:
-                print(e)
+                logger.warning(f"Exception {type(e)} occurred when receiving data, traceback:", exc_info=True)
                 continue
 
 
+@GV.register_handler("data_send")
 class DataSendHandler(DataTransmissionHandler):
     """
     Define a handler which aims to send the processed results back to the local machine.
@@ -187,7 +193,7 @@ class DataSendHandler(DataTransmissionHandler):
         self.send_lock = threading.Lock()
 
     def finish(self):
-        print("DataSendHandler terminated a request from: ", self.client_address)
+        logger.info(f"DataSendHandler terminated a request from: {self.client_address}")
         super().finish()
 
     def handle(self):
@@ -195,25 +201,25 @@ class DataSendHandler(DataTransmissionHandler):
         self.start()
 
     def start(self):
-        print("DataSendHandler received a new request from: ", self.client_address)
+        logger.info(f"DataSendHandler received a new request from: {self.client_address}")
         self.send_process()
 
     def send_process(self):
         while not self.event.is_set():
-            for i, stat in enumerate(GV.ProcessorState):
+            for i, stat in enumerate(GV.get("processor.state")):
                 if stat == f"Pending:{self.client_address[0]}":
                     lock_flag = False
                     try:
                         if self.send_lock.acquire(blocking=False):
                             lock_flag = True
-                            GV.Processor[i].base_send(self)
+                            GV.get("processor.entity")[i].base_send(self)
                     except (ConnectionResetError, ValueError, IOError) as e:
-                        print("Connection terminated")
+                        logger.info("Connection terminated")
                         self.event.set()
                         break
                     except Exception as e:
-                        print(e)
+                        logger.warning(f"Exception {type(e)} occurred when sending data, traceback:", exc_info=True)
                     finally:
                         if lock_flag:
                             self.send_lock.release()
-                            GV.ProcessorState[i] = "Available"
+                            GV.get("processor.state")[i] = "Available"

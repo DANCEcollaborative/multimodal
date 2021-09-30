@@ -41,7 +41,7 @@ def bgr2hsv(b: float, g: float, r: float):
         print("r:", r)
         print("g:", g)
         print("b:", b)
-        assert False, "Your computer is broken."
+        assert False, "Your computer has broken."
     if h < 0:
         h = h + 360
     assert 0 <= v <= 1 and 0 <= s <= 1 and 0 <= h <= 360, f"Conversion Error happens for ({b}, {g}, {r}) -> ({h}, {s}, {v})"
