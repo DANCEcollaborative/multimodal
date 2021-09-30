@@ -6,6 +6,7 @@ import java.util.Map;
 
 import basilica2.agents.listeners.BasilicaPreProcessor;
 import basilica2.agents.components.InputCoordinator;
+import basilica2.agents.components.ZeroMQClient;
 import basilica2.agents.events.LaunchEvent;
 import basilica2.agents.events.MessageEvent;
 import basilica2.agents.events.PresenceEvent;
@@ -39,7 +40,7 @@ public class MultiModalFilter extends BasilicaAdapter
 	public static String GENERIC_TYPE = "Filter";
 	protected enum multiModalTag  
 	{
-		multimodal, identity, speech, location, facialExp, pose, emotion;
+		PSI_Bazaar_Text, multimodal, identity, speech, location, facialExp, pose, emotion;
 	}
 	private String multiModalDelim = ";%;";
 	private String withinModeDelim = ":";	
@@ -51,6 +52,7 @@ public class MultiModalFilter extends BasilicaAdapter
 	private boolean isTrackingLocation = false;
 	private String sourceName; 
 	private String identityAllUsers = "group";
+	private String subscribeTopic; 
 
 	public MultiModalFilter(Agent a) 
 	{
@@ -64,6 +66,8 @@ public class MultiModalFilter extends BasilicaAdapter
 		try{minDistanceApart = Double.valueOf(getProperties().getProperty("minimum_distance_apart", "182.88"));}
 		catch(Exception e) {e.printStackTrace();}
 		try{sourceName = getProperties().getProperty("source_name", "agent");}
+		catch(Exception e) {e.printStackTrace();}
+		try{subscribeTopic = getProperties().getProperty("subscribeTopic", "PSI_Bazaar_Text");}
 		catch(Exception e) {e.printStackTrace();}
 	}
 
@@ -127,15 +131,20 @@ public class MultiModalFilter extends BasilicaAdapter
 				tag = multiModalTag.valueOf(messagePart[0]);
 				
 				switch (tag) {
+				case PSI_Bazaar_Text: 
+					// System.out.println("MultiModalFilter, handleMessageEvent - subscribeTopic = " + messagePart[0]); 
+					break; 
 				case multimodal:
 					System.out.println("=========== multimodal message ===========");
 					break;
-				case identity:  // already handled above
+				case identity:  // already handled above 
 					System.out.println("Identity: " + messagePart[1]);
 					break;
 				case speech:
 					System.out.println("Speech: " + messagePart[1]);
-					me.setText(messagePart[1]);
+					// me.setText(messagePart[1]);
+					MessageEvent meSpeech = new MessageEvent(source, "psiClient", messagePart[1]);
+					source.queueNewEvent(meSpeech);
 					break;
 				case location:
 					System.out.println("Location: " + messagePart[1]);
@@ -248,6 +257,10 @@ public class MultiModalFilter extends BasilicaAdapter
 			return locationStringToDoubles(rawLocation);
 		}
 		else return null;		
+	}
+	
+	public String getMultiModalDelim () {
+		return multiModalDelim;		
 	}
 	
 	private Double[] locationStringToDoubles(String locationString) {

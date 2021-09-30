@@ -1,6 +1,10 @@
 # Bazaar Conversational Agent Architecture
 
 Bazaar is a modular framework for designing multi-party collaborative agents that builds upon the earlier Basilica architecture (Kumar & Rosé, 2011). Bazaar plays host to a library of reusable behavioral components that each trigger a simple form of support. More complex supportive interventions are constructed by orchestrating multiple simple behaviors.  It is a publically available architecture for orchestrating conversational agent based support for group learning, inviting further work from a broad and creative community of researchers working on intelligent support for group learning. It is a powerful tool for facilitating research in collaborative learning. Its flexibility and simplicity mean it can be used to very rapidly develop platforms for investigating a wide range of important questions within the design space of dynamic support for collaborative learning. We have developed a number of such research platforms, and actively employ them in our learning studies both in classrooms and Massive Open Online Courses. As we continue to do so, we expect to discover ways in which the Bazaar architecture can be extended and refined.
+
+# Basic Bazaar Network Chart
+![Basic Bazaar Network Chart](assets/Basic_Bazaar_Network_Chart.png?raw=true)
+
 # Resources
   - [DANCE website](http://dance.cs.cmu.edu/resources/)
   - [Bazaar video tutorials and slides](http://dance.cs.cmu.edu/talks/talk12.html)
@@ -42,18 +46,48 @@ Java 1.8 is recommended for running Bazaar. Older and newer versions may not wor
   - Commands:
     - git clone https://github.com/DANCEcollaborative/bazaar.git
     - cd bazaar/LightSide
+    - Make sure you are using Java 1.8 (aka Java 8) for the 'ant build' steps below:
+      - java -version
     - ant build
+      - This should finish with "BUILD SUCCESSFUL." If it does not, you will not be able to run LightSide machine-learned classifiers within Bazaar until it succeeds. But you can continue with installation and run Bazaar agents without LightSide classifiers.
     - cd ../Genesis-Plugins
     - ant build
+      - This should finish with "BUILD SUCCESSFUL." If it does not, you will not be able to run LightSide machine-learned classifiers within Bazaar until it succeeds. But you can continue with installation and run Bazaar agents without LightSide classifiers.
 
-# Install in Eclipse
+# Detailed Instructions for Installing in Eclipse
 (For other IDEs, use an equivalent procedure)
-  - From Welcome window, select "Import existing projects."
-  - Select root directory: Select the directory into which installed this repository -- e.g., 'bazaar'.
-  - Select "Search for nested projects."
-  - Unselect project 'lightside'.
-    - Explanation (optional): The LightSide project is imported as a subtree directly from the [LightSideWorkBench/LightSide repo](https://github.com/LightSideWorkbench/LightSide), where it has a .project file for use as a stand-alone project. Within Bazaar, the LightSide code needs to be referenced within the Genesis-Plugins project (that's part of what the 'ant build's were for during repository installation) rather than as a stand-alone project.
-  - Click "Finish."
+  - Using Eclipse IDE for Java Developers, version 2021-06
+  - Select from the File menu "Open Projects from File System"
+     - Click "Directory"
+          - Select the just installed ".../bazaar/" directory
+          - Click "Open"
+     - Check "Search for nested projects"
+     - Check "Detect and configure project natures"
+     - Unselect project 'bazaar/Lightside'
+	 - Click "Finish"
+	 - Several errors will be displayed
+  - Make sure your Eclipse is set to use Java 1.8 as the default JRE.
+       - Select Eclipse > Preferences
+       - Select Java > Installed JREs
+            - If more than one JRE is listed, check the box next to JDK 1.8 (a.k.a. JDK 8)
+            - Click "Apply"
+       - Select Java > Compiler
+            - Set Compiler Compliance Level to 1.8
+            - Click "Apply and Close"
+       - If you had to make changes, you'll get a dialog box asking "... Rebuild to apply these changes?"
+            - Click "Yes"
+  - Select from the File menu, New > Java Project
+      - Uncheck "Use default location"
+      - Click "Browse"
+      - Within the just installed ".../bazaar/" directory, select "LightSide"
+      - Click "Open"
+      - Click "Finish"
+      - A dialog box with "Marketplace solutions available" will be displayed. Click "Cancel".
+  - Select from the Project menu, Clean
+      - Check "Clean all projects"
+      - Click "Clean"
+      - 5 errors will be displayed. These can be ignored.
+        - Explanation (optional): The LightSide and Genesis-Plugins project are imported as subtrees directly from the repos [LightSideWorkbench/LightSide](https://github.com/LightSideWorkbench/LightSide) and [LightSideWorkbench/Genesis-Plugins](https://github.com/LightSideWorkbench/Genesis-Plugins). Within Bazaar, the LightSide code needs to be referenced but it is not a stand-alone package.
 
 # Install and run the canonical Docker version in an IDE
 - Installing
@@ -75,7 +109,7 @@ Java 1.8 is recommended for running Bazaar. Older and newer versions may not wor
    - Set a “Room Name”.
    - Press ’Start Agent’
  - Join a chat room:  In a web browser, customize the following URL with the ROOM name you selected and a STUDENT name. For multiple students, use a URL with the same customized room name but different student names.
-   - http://localhost/chat/ROOM/1/STUDENT/1/?html=share_chat
+   - http://localhost/chat/ROOM/1/STUDENT/1/?html=climate_change
    - Use the ROOM you selected in the chat room window.
     - Use your choice for STUDENT. For multiple students:
       - Use a unique STUDENT name for each.

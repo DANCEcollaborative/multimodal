@@ -499,7 +499,7 @@ let LOCKDOWN_TIME = 0;
 // let LOCKDOWN_TIME = 365*24*60*60*1000; //lobby open for 1 year
 let START_TIME = new Date().getTime();
 const chat_url = "https://bazaar.lti.cs.cmu.edu/bazaar/chat/";
-const roomname_prefix = "jeopardy";
+const roomname_prefix = "jeopardybigwgu";
 // const create_script = "../../scripts/create-cc-rooms.sh"
 
 // when the daemon started
@@ -521,7 +521,7 @@ function getUserInstructionText(nick, i, condition)
 }
 
 let conditionOffset = -1;
-let numTeams = 230;
+let numTeams = 1500;
 let nextID = 0;
 let teams = [];
 let supplicants = [];
@@ -1215,37 +1215,40 @@ const header_stuff = "<head>\n"+
 "</head>";
 
 
-function isDCSSConnection(auth) {
+function isClientServerConnection(auth) {
   // If the auth object is present, and has a "configuration" property,
   // which is an object that itself has a "clientID" property, whose value
   // is equal to 'DCSS', then this is a DCSS client connection.
-  return auth && auth.agent && auth.agent.configuration && auth.agent.configuration.clientID === 'DCSS';
+  return auth && auth.agent && auth.agent.configuration && 
+  		 (auth.agent.configuration.clientID === 'ClientServer' || auth.agent.configuration.clientID === 'DCSS');
 }
 
-function translateDCSSAuthToBazaar(auth) {
+function translateClientServerAuthToBazaar(auth) {
   /*
-    auth looks, at minimum, like this: 
+    auth format follows. *** indicates property is currently used
     {
       agent: {
-        id: int,
-        name: "dcsslightside",
+        id: int,      			***
+        name: string,			***
         configuration: {
-          // key value
+          clientID: string		***
         }
-      },
+      }
       chat: {
-        id: int
-      },
+        id: int					***
+      }
       run: {
         id: int
       },
       user: {
         id: int,
         name: string
+        role: {
+        	id, name, description
+        },
       }
     }    
   */  
- //console.log("In Translate..., auth = " + auth);
 
   return {
     clientID: auth.agent.configuration.clientID,
@@ -1383,12 +1386,10 @@ function logMessage(socket, content, type) {
 
 io.sockets.on('connection', async (socket) => {
 
-//console.log("info", "socket.on_connection: -- start");
-
 	// console.log("socket.handshake.auth.token = " + socket.handshake.auth.token);
 	// console.log("socket.handshake.auth.clientID = " + socket.handshake.auth.clientID);
 
- 	if (isDCSSConnection(socket.handshake.auth)) {
+ 	if (isClientServerConnection(socket.handshake.auth)) {
 
 		const {
 		  token,
@@ -1397,44 +1398,36 @@ io.sockets.on('connection', async (socket) => {
 		  roomName,
 		  userID,
 		  username
-		} = translateDCSSAuthToBazaar(socket.handshake.auth);
+		} = translateClientServerAuthToBazaar(socket.handshake.auth);
 		  
-	//console.log("socket ID: " + socket.id);
-	//console.log("token = " + token);
-	//console.log("clientID = " + clientID);
-	//console.log("agent = " + agent);
-	//console.log("roomName = " + roomName);
-		// console.log("roomid = " + roomid);
-	//console.log("userID = " + userID);
-	//console.log("username = " + username); 
-		
-		// socket.roomid = agent + roomName;
-		// console.log("socket.roomid = " + socket.roomid);
+	console.log("socket ID: " + socket.id);
+	console.log("token = " + token);
+	console.log("clientID = " + clientID);
+	console.log("agent = " + agent);
+	console.log("roomName = " + roomName);
+	console.log("userID = " + userID);
+	console.log("username = " + username); 
 				
-		// socket.join(token);  				// DCSS wants this	
-		// console.log("socket rooms: " + socket.rooms);
-				
-		socket.clientID = clientID;    		
-		socket.agent = agent;  				// agent ==> roomName elsewhere in this file
-		socket.roomName = roomName;         // roomName ==> teamNumber elsewhere in this file 
-		socket.userID = userID;  
-		room = agent + roomName; 
-	//console.log("room: " + room);    						
-		// socket.username = username; 
+	socket.clientID = clientID;    		
+	socket.agent = agent;  				// agent ==> roomName elsewhere in this file
+	socket.roomName = roomName;         // roomName ==> teamNumber elsewhere in this file 
+	socket.userID = userID;  
+	room = agent + roomName; 
+	//console.log("room: " + room); 
 		
 		logger = winston.createLogger({
     		transports: [
       			new (winston.transports.Console)()]
   		});	
-	//console.log("socket.on_connection w/ auth token: calling setTeam_fromSocket");	
 		setTeam_fromSocket(agent,roomName,userID,username,logger);
 		
 		let temporary = false; 
 		let perspective = null; 
 		addUser(socket, room, username, temporary, userID, perspective)
 	}
+	
 
-        // when the client emits 'snoop', this listens and executes
+    // when the client emits 'snoop', this listens and executes
 	socket.on('snoop', async (room, id, perspective) => {
 	
 	   origin = socket.handshake.address
@@ -1482,8 +1475,12 @@ io.sockets.on('connection', async (socket) => {
 		// we tell the client to execute 'updatechat' with 2 parameters
 		// console.log("info","socket.on_sendchat: -- room: " + socket.room + "  -- username: " + socket.uusername + "  -- text: " + data);
 		logMessage(socket, data, "text");
-		
-		if (socket.username == "DCSSLightSideAgent") {
+                console.log("socket.on('sendchat'): socket.clientID = " + socket.clientID + " socket.username = " + socket.username);
+  
+		if (socket.username == "MLAgent") {
+		// if (socket.username == "DCSSLightSideAgent") {
+                // if (socket.clientID == "DCSS") {		
+		// if (socket.username == "DCSSLightSideAgent") {
 		//console.log("socket.on('sendchat'): socket.username == DCSSLightSideAgent; about to emit 'interjection'");
 			io.sockets.in(socket.room).emit('interjection', { message: data }); 
 		} else {	
