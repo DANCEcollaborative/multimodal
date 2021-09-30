@@ -76,8 +76,10 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="ZeroMqManager.cs" />
+    <Compile Include="NetMqSubscriber.cs" />
+    <Compile Include="NetMqPublisher.cs" />
     <Compile Include="CommunicationManager.cs" />
+    <Compile Include="EncodedImageSendHelper.cs" />
     <Compile Include="ImageSendHelper.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
