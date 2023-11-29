@@ -47,19 +47,19 @@ namespace Test.Psi.Kinect
         /// <summary>
         /// Create mesh from depth map.
         /// </summary>
-        /// <param name="depthMap">Depth map image.</param>
+        /// <param name="depthImage">Depth map image.</param>
         /// <param name="colorData">Color data image.</param>
         /// <param name="calib">Kinect calibration.</param>
         /// <returns>Mesh.</returns>
-        public static Mesh MeshFromDepthMap(Shared<Image> depthMap, Shared<Image> colorData, IDepthDeviceCalibrationInfo calib)
+        public static Mesh MeshFromDepthMap(Shared<DepthImage> depthImage, Shared<Image> colorData, IDepthDeviceCalibrationInfo calib)
         {
             Mesh mesh = new Mesh();
-            int width = depthMap.Resource.Width;
-            int height = depthMap.Resource.Height;
+            int width = depthImage.Resource.Width;
+            int height = depthImage.Resource.Height;
             mesh.Vertices = new Vertex[width * height];
             bool[] vertexValid = new bool[width * height];
             mesh.Faces = new Face[2 * (width - 1) * (height - 1)];
-            byte[] depthData = depthMap.Resource.ReadBytes(depthMap.Resource.Size);
+            byte[] depthData = depthImage.Resource.ReadBytes(depthImage.Resource.Size);
             byte[] pixelData = colorData.Resource.ReadBytes(colorData.Resource.Size);
             int count = 0;
             unsafe
@@ -68,7 +68,7 @@ namespace Test.Psi.Kinect
                 {
                     for (int j = 0; j < width; j++)
                     {
-                        ushort* src = (ushort*)((byte*)depthMap.Resource.ImageData.ToPointer() + (i * depthMap.Resource.Stride)) + j;
+                        ushort* src = (ushort*)((byte*)depthImage.Resource.ImageData.ToPointer() + (i * depthImage.Resource.Stride)) + j;
                         ushort depth = *src;
                         Point2D pt = new Point2D(j, i);
                         vertexValid[count] = (depth == 0) ? false : true;
@@ -76,11 +76,9 @@ namespace Test.Psi.Kinect
                         mesh.Vertices[count].Color = new Point3D(0.0, 0.0, 0.0);
                         if (depth != 0)
                         {
-                            Point2D pixelCoord;
-
                             // Determine vertex position+color via new calibration
                             Point2D newpt = new Point2D(pt.X, calib.DepthIntrinsics.ImageHeight - pt.Y);
-                            Point3D p = calib.DepthIntrinsics.ToCameraSpace(newpt, depth, true);
+                            Point3D p = calib.DepthIntrinsics.GetCameraSpacePosition(newpt, depth, depthImage.Resource.DepthValueSemantics, true);
                             mesh.Vertices[count].Pos = new Point3D(p.X / 1000.0, p.Y / 1000.0, p.Z / 1000.0);
 
                             Vector<double> pos = Vector<double>.Build.Dense(4);
@@ -91,9 +89,7 @@ namespace Test.Psi.Kinect
 
                             pos = calib.ColorExtrinsics * pos;
                             Point3D clrPt = new Point3D(pos[0], pos[1], pos[2]);
-                            pixelCoord = calib.ColorIntrinsics.ToPixelSpace(clrPt, true);
-                            if (pixelCoord.X >= 0 && pixelCoord.X < colorData.Resource.Width &&
-                                pixelCoord.Y >= 0 && pixelCoord.Y < colorData.Resource.Height)
+                            if (calib.ColorIntrinsics.TryGetPixelPosition(clrPt, true, out var pixelCoord))
                             {
                                 byte* pixel = ((byte*)colorData.Resource.ImageData.ToPointer() + ((int)pixelCoord.Y * colorData.Resource.Stride)) + (4 * (int)pixelCoord.X);
                                 mesh.Vertices[count].Color = new Point3D((double)(int)*(pixel + 2), (double)(int)*(pixel + 1), (double)(int)*pixel);

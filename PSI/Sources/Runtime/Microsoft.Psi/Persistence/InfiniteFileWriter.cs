@@ -14,11 +14,8 @@ namespace Microsoft.Psi.Persistence
     internal unsafe sealed class InfiniteFileWriter : IDisposable
     {
         internal const string FileNameFormat = "{0}_{1:000000}.psi";
-        internal const string ActiveWriterMutexFormat = @"Global\ActiveWriterMutex_{0}_{1}";
         private const string PulseEventFormat = @"Global\PulseEvent_{0}_{1}";
         private readonly object syncRoot = new object();
-        private readonly string path;
-        private readonly string fileName;
         private string extentName;
         private int extentSize;
         private byte* startPointer;
@@ -34,41 +31,35 @@ namespace Microsoft.Psi.Persistence
         private bool disposed = false;
         private EventWaitHandle localWritePulse;
         private Mutex globalWritePulse;
-        private Mutex activeWriterMutex;
         private Queue<MemoryMappedFile> priorExtents;
         private int priorExtentQueueLength;
         private object viewDisposeLock = new object();
-
-        public InfiniteFileWriter(string path, string fileName, int extentSize, bool append = false)
-            : this(path, fileName, extentSize)
-        {
-            this.path = path;
-            if (append)
-            {
-                this.LoadLastExtent();
-            }
-            else
-            {
-                this.CreateNewExtent();
-            }
-        }
 
         public InfiniteFileWriter(string fileName, int extentSize, int retentionQueueLength)
             : this(null, fileName, extentSize)
         {
             this.priorExtentQueueLength = retentionQueueLength;
             this.priorExtents = new Queue<MemoryMappedFile>(retentionQueueLength);
-            this.CreateNewExtent();
         }
 
-        private InfiniteFileWriter(string path, string fileName, int extentSize)
+        public InfiniteFileWriter(string path, string fileName, int extentSize)
         {
-            this.fileName = fileName;
+            this.Path = path;
+            this.FileName = fileName;
             this.extentSize = extentSize + sizeof(int); // eof marker
             this.localWritePulse = new EventWaitHandle(false, EventResetMode.ManualReset);
             new Thread(new ThreadStart(() =>
             {
-                this.globalWritePulse = new Mutex(true, PulseEventName(path, fileName));
+                try
+                {
+                    this.globalWritePulse = new Mutex(true, PulseEventName(path, fileName));
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    // Some platforms don't allow global mutexes.  In this case
+                    // we can still continue on with a slight perf degradation.
+                }
+
                 try
                 {
                     while (!this.disposed)
@@ -80,44 +71,26 @@ namespace Microsoft.Psi.Persistence
                 }
                 catch (ObjectDisposedException)
                 {
-                    // ignore
+                    // ignore if localWritePulse was disposed
+                }
+                catch (AbandonedMutexException)
+                {
+                    // ignore if globalWritePulse was disposed
                 }
             })) { IsBackground = true }.Start();
-            bool isSingleWriter;
-            this.activeWriterMutex = new Mutex(false, ActiveWriterMutexName(path, fileName), out isSingleWriter);
-            if (!isSingleWriter)
-            {
-                throw new IOException("The file is already opened in write mode.");
-            }
+
+            this.CreateNewExtent();
         }
 
-        public string FileName => this.fileName;
+        public string FileName { get; }
 
-        public string Path => this.path;
+        public string Path { get; }
 
-        public bool IsVolatile => this.path == null;
+        public bool IsVolatile => this.Path == null;
 
         public int CurrentExtentId => this.fileId - 1;
 
         public int CurrentBlockStart => (int)(this.freePointer - this.startPointer);
-
-        /// <summary>
-        /// Indicates whether the specified file has an active writer.
-        /// </summary>
-        /// <param name="name">Infinite file name.</param>
-        /// <param name="path">Infinite file path.</param>
-        /// <returns>Returns true if there is an active writer to this file.</returns>
-        public static bool IsActive(string name, string path)
-        {
-            Mutex writerActiveMutex;
-            if (!Mutex.TryOpenExisting(InfiniteFileWriter.ActiveWriterMutexName(path, name), out writerActiveMutex))
-            {
-                return false;
-            }
-
-            writerActiveMutex.Dispose();
-            return true;
-        }
 
         public void Dispose()
         {
@@ -136,10 +109,11 @@ namespace Microsoft.Psi.Persistence
             this.localWritePulse.Set();
             this.localWritePulse.Dispose();
             this.localWritePulse = null;
-            this.globalWritePulse.Dispose();
+            this.globalWritePulse?.Dispose();
             this.globalWritePulse = null;
-            this.activeWriterMutex.Dispose();
-            this.activeWriterMutex = null;
+
+            // may have already been disposed in CloseCurrent
+            this.view?.Dispose();
         }
 
         public void Write(BufferWriter bufferWriter)
@@ -242,38 +216,39 @@ namespace Microsoft.Psi.Persistence
             return MakeHandleName(PulseEventFormat, path, fileName);
         }
 
-        internal static string ActiveWriterMutexName(string path, string fileName)
-        {
-            return MakeHandleName(ActiveWriterMutexFormat, path, fileName);
-        }
-
         private static string MakeHandleName(string format, string path, string fileName)
         {
-            var name = string.Format(format, path?.ToLower().GetHashCode(), fileName.ToLower());
+            var name = string.Format(format, path?.ToLower().GetDeterministicHashCode(), fileName.ToLower());
             if (name.Length > 260)
             {
                 // exceeded the name length limit
-                return string.Format(format, path?.ToLower().GetHashCode(), fileName.ToLower().GetHashCode());
+                return string.Format(format, path?.ToLower().GetDeterministicHashCode(), fileName.ToLower().GetDeterministicHashCode());
             }
 
             return name;
         }
 
-        private void LoadLastExtent() => throw new NotImplementedException();
-
         private void CreateNewExtent()
         {
             int newFileId = this.fileId;
             this.fileId++;
-            this.extentName = string.Format(FileNameFormat, this.fileName, newFileId);
+            this.extentName = string.Format(FileNameFormat, this.FileName, newFileId);
 
             // create a new file first, just in case anybody is reading
             MemoryMappedFile newMMF;
             if (!this.IsVolatile)
             {
-                this.extentName = System.IO.Path.Combine(this.path, this.extentName);
+                this.extentName = System.IO.Path.Combine(this.Path, this.extentName);
                 var file = File.Open(this.extentName, FileMode.Create, FileAccess.ReadWrite, FileShare.Read);
-                newMMF = MemoryMappedFile.CreateFromFile(file, null, this.extentSize, MemoryMappedFileAccess.ReadWrite, HandleInheritability.Inheritable, false);
+                try
+                {
+                    newMMF = MemoryMappedFile.CreateFromFile(file, null, this.extentSize, MemoryMappedFileAccess.ReadWrite, HandleInheritability.Inheritable, false);
+                }
+                catch (IOException)
+                {
+                    file.Dispose();
+                    throw;
+                }
             }
             else
             {
@@ -283,7 +258,8 @@ namespace Microsoft.Psi.Persistence
             // store the id of the new file in the old file and close it
             if (this.mappedFile != null)
             {
-                *(int*)this.freePointer = -newFileId; // end of file marker
+                // the id of the next file is encoded as a negative value to mark the end of the current file
+                *(int*)this.freePointer = -newFileId;
                 this.CloseCurrent(false);
             }
 

@@ -6,6 +6,7 @@ namespace Microsoft.Psi.Serialization
     using System;
     using System.Collections.Concurrent;
     using System.Collections.Generic;
+    using System.IO;
     using System.Linq;
     using System.Reflection;
     using System.Runtime.CompilerServices;
@@ -17,7 +18,7 @@ namespace Microsoft.Psi.Serialization
     /// The <see cref="KnownSerializers.Default"/> contains system-wide serializers for the current version of the type system.
     /// Serializers explicitly registered with this instance are used by all other instances unless an override is specified.
     /// When deserializing from a persisted file, the <see cref="Microsoft.Psi.Data.Importer"/> instance returned by
-    /// the <see cref="Microsoft.Psi.Store.Open"/> method will create its own KnownSerializer instance, and register serializers
+    /// the <see cref="Data.PsiImporter"/> will create its own KnownSerializer instance, and register serializers
     /// compatible with the store being open.
     /// </summary>
     /// <remarks>
@@ -32,8 +33,8 @@ namespace Microsoft.Psi.Serialization
     /// type of the field (e.g the field is declared as IEnumerable{int} and is assigned an int[]).
     /// In such cases the runtime might not be able to find the correct type to use,
     /// and can only instantiate the correct deserializer if one of the following is true:
-    /// - a serializer has been explicitly registered for the object type or contract using <see cref="Register{T, TSerializer}()"/>
-    /// - a type has been explicitly registered with an explicit contract name <see cref="Register{T}(string)"/> or <see cref="Register{T, TSerializer}(string)"/>.
+    /// - a serializer has been explicitly registered for the object type or contract using <see cref="Register{T, TSerializer}(CloningFlags)"/>
+    /// - a type has been explicitly registered with an explicit contract name <see cref="Register{T}(string, CloningFlags)"/> or <see cref="Register{T, TSerializer}(string, CloningFlags)"/>.
     /// </remarks>
     public class KnownSerializers
     {
@@ -71,35 +72,41 @@ namespace Microsoft.Psi.Serialization
         public static readonly KnownSerializers Default;
 
         // the set of types we don't know how to serialize
-        private static readonly HashSet<Type> UnserializableTypes = new HashSet<Type>();
+        private static readonly HashSet<Type> UnserializableTypes = new ();
+
+        // mapping from fully-qualified .NET type names to synonyms
+        private readonly Dictionary<string, string> typeNameSynonyms = new ();
 
         // the serialization subsystem version used by this instance
-        private RuntimeInfo runtimeVersion;
+        private readonly RuntimeInfo runtimeInfo;
 
         // the default instance marker
-        private bool isDefault;
+        private readonly bool isDefault;
 
-        private object syncRoot = new object();
+        private readonly object syncRoot = new ();
 
         // *************** the rules for creating serializers ****************
 
         // the custom generic serializers, such as SharedSerializer<Shared<T>>, that need to be instantiated for every T
-        private Dictionary<Type, Type> templates;
+        private readonly Dictionary<Type, Type> templates;
 
         // the custom serializers, such as ManagedBufferSerializer, which have been registered explicitly rather than with class annotations
-        private Dictionary<Type, Type> serializers;
+        private readonly Dictionary<Type, Type> serializers;
 
         // used to find a type for a given schema (when creating a handler from a polymorphic field: id -> schema -> type)
-        private ConcurrentDictionary<string, Type> knownTypes;
+        private readonly ConcurrentDictionary<string, Type> knownTypes;
 
         // used to find the name from a type (when creating a handler: type -> string -> schema)
-        private ConcurrentDictionary<Type, string> knownNames;
+        private readonly ConcurrentDictionary<Type, string> knownNames;
 
         // used to find schema for a given contract name (when creating a handler: type -> string -> schema)
-        private ConcurrentDictionary<string, TypeSchema> schemas;
+        private readonly ConcurrentDictionary<string, TypeSchema> schemas;
 
         // used to find the schema by id (when creating a handler from a polymorphic field: id -> schema -> type)
-        private ConcurrentDictionary<int, TypeSchema> schemasById;
+        private readonly ConcurrentDictionary<int, TypeSchema> schemasById;
+
+        // used to find the cloning flags for a given type
+        private readonly ConcurrentDictionary<Type, CloningFlags> cloningFlags;
 
         // *************** the cached handlers and handler indexes ****************
         // these caches are accessed often once the rules are expanded into handlers,
@@ -124,24 +131,24 @@ namespace Microsoft.Psi.Serialization
             UnserializableTypes.Add(typeof(UIntPtr));
             UnserializableTypes.Add(typeof(MemberInfo));
             UnserializableTypes.Add(typeof(System.Diagnostics.StackTrace));
-            Default = new KnownSerializers(true, RuntimeInfo.Current);
+            Default = new KnownSerializers(true, RuntimeInfo.Latest);
         }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="KnownSerializers"/> class.
         /// </summary>
-        /// <param name="runtimeVersion">
+        /// <param name="runtimeInfo">
         /// The version of the runtime to be compatible with. This dictates the behavior of automatic serialization.
         /// </param>
-        public KnownSerializers(RuntimeInfo runtimeVersion = null)
-            : this(false, runtimeVersion ?? RuntimeInfo.Current)
+        public KnownSerializers(RuntimeInfo runtimeInfo = null)
+            : this(false, runtimeInfo ?? RuntimeInfo.Latest)
         {
         }
 
-        private KnownSerializers(bool isDefault, RuntimeInfo runtimeVersion)
+        private KnownSerializers(bool isDefault, RuntimeInfo runtimeInfo)
         {
             this.isDefault = isDefault;
-            this.runtimeVersion = runtimeVersion; // this can change because of metadata updates!
+            this.runtimeInfo = runtimeInfo; // this can change because of metadata updates!
 
             this.handlers = new SerializationHandler[0];
             this.handlersById = new Dictionary<int, SerializationHandler>();
@@ -156,13 +163,16 @@ namespace Microsoft.Psi.Serialization
                 this.knownNames = new ConcurrentDictionary<Type, string>();
                 this.schemas = new ConcurrentDictionary<string, TypeSchema>();
                 this.schemasById = new ConcurrentDictionary<int, TypeSchema>();
+                this.cloningFlags = new ConcurrentDictionary<Type, CloningFlags>();
 
                 // register non-generic, custom serializers
                 this.Register<string, StringSerializer>();
                 this.Register<byte[], ByteArraySerializer>();
                 this.Register<BufferReader, BufferSerializer>();
                 this.Register<string[], StringArraySerializer>();
+                this.Register<MemoryStream, MemoryStreamSerializer>();
                 this.RegisterGenericSerializer(typeof(EnumerableSerializer<>));
+                this.RegisterGenericSerializer(typeof(DictionarySerializer<,>));
             }
             else
             {
@@ -173,6 +183,7 @@ namespace Microsoft.Psi.Serialization
                 this.knownNames = new ConcurrentDictionary<Type, string>(Default.knownNames);
                 this.schemas = new ConcurrentDictionary<string, TypeSchema>(Default.schemas);
                 this.schemasById = new ConcurrentDictionary<int, TypeSchema>(Default.schemasById);
+                this.cloningFlags = new ConcurrentDictionary<Type, CloningFlags>(Default.cloningFlags);
             }
         }
 
@@ -182,9 +193,9 @@ namespace Microsoft.Psi.Serialization
         public event EventHandler<TypeSchema> SchemaAdded;
 
         /// <summary>
-        /// Gets the version of the serialization subsystem this serializer set is compatible with.
+        /// Gets the runtime info, including the version of the serialization subsystem.
         /// </summary>
-        public RuntimeInfo RuntimeVersion => this.runtimeVersion;
+        public RuntimeInfo RuntimeInfo => this.runtimeInfo;
 
         /// <summary>
         /// Gets the set of schemas in use.
@@ -192,12 +203,18 @@ namespace Microsoft.Psi.Serialization
         public IDictionary<string, TypeSchema> Schemas => this.schemas;
 
         /// <summary>
+        /// Gets the set of type name synonyms.
+        /// </summary>
+        public IDictionary<string, string> TypeNameSynonyms => this.typeNameSynonyms;
+
+        /// <summary>
         /// Registers type T with the specified contract name.
         /// Use this overload to deserialize data persisted before a type name change.
         /// </summary>
         /// <typeparam name="T">The type to use when deserializing objects with the specified contract.</typeparam>
         /// <param name="contractName">The name to remap. This can be a full type name or a contract name.</param>
-        public void Register<T>(string contractName) => this.Register(typeof(T), contractName);
+        /// <param name="cloningFlags">Optional flags that control the cloning behavior for this type.</param>
+        public void Register<T>(string contractName, CloningFlags cloningFlags = CloningFlags.None) => this.Register(typeof(T), contractName, cloningFlags);
 
         /// <summary>
         /// Registers a given type with the specified contract name.
@@ -205,16 +222,27 @@ namespace Microsoft.Psi.Serialization
         /// </summary>
         /// <param name="type">The type to use when deserializing objects with the specified contract.</param>
         /// <param name="contractName">The name to remap. This can be a full type name or a contract name.</param>
-        public void Register(Type type, string contractName)
+        /// <param name="cloningFlags">Optional flags that control the cloning behavior for this type.</param>
+        public void Register(Type type, string contractName, CloningFlags cloningFlags = CloningFlags.None)
         {
-            contractName = contractName ?? TypeSchema.GetContractName(type, this.runtimeVersion);
+            contractName ??= TypeSchema.GetContractName(type, this.runtimeInfo.SerializationSystemVersion);
             if (this.knownTypes.TryGetValue(contractName, out Type existingType) && existingType != type)
             {
                 throw new SerializationException($"Cannot register type {type.AssemblyQualifiedName} under the contract name {contractName} because the type {existingType.AssemblyQualifiedName} is already registered under the same name.");
             }
 
+            if (this.cloningFlags.TryGetValue(type, out var existingFlags) || this.handlersByType.ContainsKey(type))
+            {
+                // cannot re-register once type flags has been registered or handler has been created
+                if (existingFlags != cloningFlags)
+                {
+                    throw new SerializationException($"Cannot register type {type.AssemblyQualifiedName} with cloning flags ({cloningFlags}) because a handler for it has already been created with flags ({existingFlags}).");
+                }
+            }
+
             this.knownTypes[contractName] = type;
             this.knownNames[type] = contractName;
+            this.cloningFlags[type] = cloningFlags;
         }
 
         /// <summary>
@@ -222,12 +250,13 @@ namespace Microsoft.Psi.Serialization
         /// Use this overload when type T is required in a polymorphic context.
         /// </summary>
         /// <typeparam name="T">The type to serialize.</typeparam>
+        /// <param name="cloningFlags">Optional flags that control the cloning behavior for this type.</param>
         /// <remarks>
         /// When deserializing a polymorphic field, the field's object value might have a different type than the declared (static)
         /// type of the field (e.g the field is declared as IEnumerable{int} and is assigned a MyCustomCollection{int}).
         /// Pre-registering the type allows the runtime to find it in such circumstances.
         /// </remarks>
-        public void Register<T>() => this.Register(typeof(T), null);
+        public void Register<T>(CloningFlags cloningFlags = CloningFlags.None) => this.Register(typeof(T), null, cloningFlags);
 
         /// <summary>
         /// Registers a serializer based on type.
@@ -237,23 +266,25 @@ namespace Microsoft.Psi.Serialization
         /// <typeparam name="TSerializer">
         /// The corresponding type of serializer to use, which replaces any <see cref="SerializerAttribute"/> annotation.
         /// </typeparam>
-        public void Register<T, TSerializer>()
-            where TSerializer : ISerializer<T>, new() => this.Register<T, TSerializer>(null);
+        /// <param name="cloningFlags">Optional flags that control the cloning behavior for this type.</param>
+        public void Register<T, TSerializer>(CloningFlags cloningFlags = CloningFlags.None)
+            where TSerializer : ISerializer<T>, new() => this.Register<T, TSerializer>(null, cloningFlags);
 
         /// <summary>
         /// Registers a type and serializer for the specified contract type.
         /// Use this overload to deserialize data persisted before a type name change.
         /// </summary>
         /// <param name="contractName">The previous contract name of type T.</param>
+        /// <param name="cloningFlags">Optional flags that control the cloning behavior for this type.</param>
         /// <typeparam name="T">The type being serialized.</typeparam>
         /// <typeparam name="TSerializer">
         /// The corresponding type of serializer to use, which replaces any <see cref="SerializerAttribute"/> annotation.
         /// </typeparam>
-        public void Register<T, TSerializer>(string contractName)
+        public void Register<T, TSerializer>(string contractName, CloningFlags cloningFlags = CloningFlags.None)
             where TSerializer : ISerializer<T>, new()
         {
             Type t = typeof(T);
-            this.Register(t, contractName);
+            this.Register(t, contractName, cloningFlags);
             this.serializers[t] = typeof(TSerializer);
         }
 
@@ -264,11 +295,58 @@ namespace Microsoft.Psi.Serialization
         /// <param name="genericSerializer">The type of generic serializer to register.</param>
         public void RegisterGenericSerializer(Type genericSerializer)
         {
-            // var interf = genericSerializer.GetInterface("ISerializer`1");
             var interf = genericSerializer.GetInterface(typeof(ISerializer<>).FullName);
             var serializableType = interf.GetGenericArguments()[0];
             serializableType = TypeResolutionHelper.GetVerifiedType(serializableType.Namespace + "." + serializableType.Name); // FullName doesn't work here
             this.templates[serializableType] = genericSerializer;
+        }
+
+        /// <summary>
+        /// Register synonym for fully-qualified type name.
+        /// </summary>
+        /// <param name="synonym">Synonym used in type-schema info.</param>
+        /// <param name="fullyQualifiedTypeName">Fully-qualified .NET type name.</param>
+        public void RegisterDynamicTypeSchemaNameSynonym(string synonym, string fullyQualifiedTypeName)
+        {
+            this.typeNameSynonyms.Add(fullyQualifiedTypeName, synonym);
+        }
+
+        /// <summary>
+        /// Gets the serialization handler for a specified type.
+        /// </summary>
+        /// <typeparam name="T">The type to get the serialization handler for.</typeparam>
+        /// <returns>The serialization handler for a specified type.</returns>
+        /// <remarks>
+        /// This is the slow-ish path, called at codegen time, from custom serializers that want to cache a handler
+        /// and for polymorphic fields, the first time the id is encountered.
+        /// </remarks>
+        public SerializationHandler<T> GetHandler<T>()
+        {
+            // important: all code paths that could lead to the creation of a new handler need to lock.
+            // We want to make sure a handler is fully created and initialized before it is returned, so we lock before accessing the dictionary
+            // A thread that is generating code can re-enter here as it is expanding the type graph,
+            // and can get a partially initialized handler to resolve circular type references
+            // but other threads have to wait for the expansion to finish.
+            lock (this.syncRoot)
+            {
+                // if we don't have one already, create one
+                if (!this.handlersByType.TryGetValue(typeof(T), out SerializationHandler handler))
+                {
+                    handler = this.AddHandler<T>();
+                }
+
+                return (SerializationHandler<T>)handler;
+            }
+        }
+
+        /// <summary>
+        /// Gets the cloning flags for the specified type.
+        /// </summary>
+        /// <param name="type">The type for which to get the cloning flags.</param>
+        /// <returns>The cloning flags for the type.</returns>
+        internal CloningFlags GetCloningFlags(Type type)
+        {
+            return this.cloningFlags.TryGetValue(type, out var flags) ? flags : CloningFlags.None;
         }
 
         /// <summary>
@@ -285,7 +363,7 @@ namespace Microsoft.Psi.Serialization
                 return;
             }
 
-            if (schema.IsPartial && this.schemasById.TryGetValue(id, out TypeSchema otherSchema))
+            if (schema.IsPartial && this.schemasById.TryGetValue(id, out _))
             {
                 // schema is already registered
                 return;
@@ -309,7 +387,7 @@ namespace Microsoft.Psi.Serialization
                         // v0 has runtime types affixed to each stream metadata
                         foreach (var kv in sm.RuntimeTypes)
                         {
-                            var schema = new TypeSchema(kv.Value, kv.Key, kv.Value, 0);
+                            var schema = new TypeSchema(kv.Value, kv.Value, kv.Key, 0, null, 0);
                             this.RegisterSchema(schema);
                         }
                     }
@@ -318,27 +396,6 @@ namespace Microsoft.Psi.Serialization
                 {
                     this.RegisterSchema((TypeSchema)meta);
                 }
-            }
-        }
-
-        // this is the slow-ish path, called at codegen time, from custom serializers that want to cache a handler
-        // and for polymorphic fields, the first time the id is encountered
-        internal SerializationHandler<T> GetHandler<T>()
-        {
-            // important: all code paths that could lead to the creation of a new handler need to lock.
-            // We want to make sure a handler is fully created and initialized before it is returned, so we lock before accessing the dictionary
-            // A thread that is generating code can re-enter here as it is expanding the type graph,
-            // and can get a partially initialized handler to resolve circular type references
-            // but other threads have to wait for the expansion to finish.
-            lock (this.syncRoot)
-            {
-                // if we don't have one already, create one
-                if (!this.handlersByType.TryGetValue(typeof(T), out SerializationHandler handler))
-                {
-                    handler = this.AddHandler<T>();
-                }
-
-                return (SerializationHandler<T>)handler;
             }
         }
 
@@ -360,7 +417,7 @@ namespace Microsoft.Psi.Serialization
                 }
             }
 
-            var mi = typeof(KnownSerializers).GetMethod(nameof(this.GetHandler), BindingFlags.Instance | BindingFlags.NonPublic).MakeGenericMethod(type);
+            var mi = typeof(KnownSerializers).GetMethod(nameof(this.GetHandler), BindingFlags.Instance | BindingFlags.Public).MakeGenericMethod(type);
             return (SerializationHandler)mi.Invoke(this, null);
         }
 
@@ -416,17 +473,23 @@ namespace Microsoft.Psi.Serialization
             SerializationHandler handler = null;
             var type = typeof(T);
             ISerializer<T> serializer = null;
-            TypeSchema schema = null;
 
             if (!this.knownNames.TryGetValue(type, out string name))
             {
-                name = TypeSchema.GetContractName(type, this.runtimeVersion);
+                name = TypeSchema.GetContractName(type, this.runtimeInfo.SerializationSystemVersion);
             }
 
-            int id = this.schemas.TryGetValue(name, out schema) ? schema.Id : TypeSchema.GetId(name);
+            if (!this.schemas.TryGetValue(name, out TypeSchema schema))
+            {
+                // try to match to an existing schema without assembly/version info
+                string typeName = TypeResolutionHelper.RemoveAssemblyName(type.AssemblyQualifiedName);
+                schema = this.schemas.Values.FirstOrDefault(s => TypeResolutionHelper.RemoveAssemblyName(s.TypeName) == typeName);
+            }
+
+            int id = schema?.Id ?? TypeSchema.GetId(name);
 
             serializer = this.CreateSerializer<T>();
-            handler = SerializationHandler.Create<T>(serializer, name, id);
+            handler = SerializationHandler.Create<T>(serializer, schema?.Name ?? name, id);
 
             // first register the handler
             int oldCount = this.handlers.Length;
@@ -453,15 +516,43 @@ namespace Microsoft.Psi.Serialization
                 // initialize the serializer after the handler is registered,
                 // to make sure all handlers are registered before initialization runs and
                 // allow the serializer initialization code to find and cache the handlers for the types it needs
-                schema = serializer.Initialize(this, schema);
-
-                // let any subscribers know that we initialized a new serializer that publishes a schema
-                if (schema != null)
+                try
                 {
-                    // store the updated schema and override whatever is present already
-                    this.schemas[schema.Name] = schema;
-                    this.schemasById[schema.Id] = schema;
-                    this.SchemaAdded?.Invoke(this, schema);
+                    schema = serializer.Initialize(this, schema);
+
+                    // let any subscribers know that we initialized a new serializer that publishes a schema
+                    if (schema != null)
+                    {
+                        // store the updated schema and override whatever is present already
+                        this.schemas[schema.Name] = schema;
+                        this.schemasById[schema.Id] = schema;
+                        this.SchemaAdded?.Invoke(this, schema);
+                    }
+                }
+                catch (SerializationException)
+                {
+                    // Even though we're going to rethrow this exception, some callers may wish to
+                    // attempt to recover from this error and just mark this one stream type as
+                    // unreadable. So we should remove the handler we just registered as it's not
+                    // yet properly initialized.
+                    oldCount = this.handlers.Length;
+                    newHandlers = new SerializationHandler[oldCount - 1];
+                    Array.Copy(this.handlers, newHandlers, oldCount - 1);
+                    this.handlers = newHandlers;
+
+                    newIndex = new Dictionary<SerializationHandler, int>(this.index);
+                    newIndex.Remove(handler);
+                    this.index = newIndex;
+
+                    newHandlersByType = new Dictionary<Type, SerializationHandler>(this.handlersByType);
+                    newHandlersByType.Remove(type);
+                    this.handlersByType = newHandlersByType;
+
+                    newHandlersById = new Dictionary<int, SerializationHandler>(this.handlersById);
+                    newHandlersById.Remove(handler.Id);
+                    this.handlersById = newHandlersById;
+
+                    throw;
                 }
             }
 
@@ -473,9 +564,8 @@ namespace Microsoft.Psi.Serialization
         private ISerializer<T> CreateSerializer<T>()
         {
             var type = typeof(T);
-            Type serializerType;
 
-            if (this.serializers.TryGetValue(type, out serializerType))
+            if (this.serializers.TryGetValue(type, out Type serializerType))
             {
                 return (ISerializer<T>)Activator.CreateInstance(serializerType);
             }
@@ -525,6 +615,11 @@ namespace Microsoft.Psi.Serialization
             // which in turn will delegate element serialization to the correct registered serializer
             if (type.IsArray)
             {
+                if (type.GetArrayRank() != 1)
+                {
+                    throw new NotSupportedException("Multi-dimensional arrays are currently not supported. A workaround would be to convert to a one-dimensional array.");
+                }
+
                 // instantiate the correct array serializer based on the type of elements in the array
                 var itemType = type.GetElementType();
                 Type arraySerializer = Generator.IsSimpleValueType(itemType) ? typeof(SimpleArraySerializer<>) : typeof(ArraySerializer<>);

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-(cd ./Sources/Media/Microsoft.Psi.Media.Native.x64/                                    && . ./build.sh)
+(cd ./Sources/Media/Microsoft.Psi.Media_Interop.Linux/                                 && . ./build.sh)
 (cd ./Sources/Audio/Microsoft.Psi.Audio/                                               && . ./build.sh)
 (cd ./Sources/Audio/Microsoft.Psi.Audio.Linux/                                         && . ./build.sh)
 (cd ./Sources/Common/Test.Psi.Common/                                                  && . ./build.sh)
@@ -12,14 +12,12 @@
 (cd ./Sources/Integrations/CognitiveServices/Microsoft.Psi.CognitiveServices.Speech/   && . ./build.sh)
 (cd ./Sources/Integrations/CognitiveServices/Test.Psi.CognitiveServices.Speech/        && . ./build.sh)
 (cd ./Sources/Integrations/ROS/Microsoft.ROS/                                          && . ./build.sh)
+(cd ./Sources/Kinect/Microsoft.Psi.AzureKinect/                                        && . ./build.sh)
 (cd ./Sources/Language/Microsoft.Psi.Language/                                         && . ./build.sh)
 (cd ./Sources/Media/Microsoft.Psi.Media.Linux/                                         && . ./build.sh)
 (cd ./Sources/Speech/Microsoft.Psi.Speech/                                             && . ./build.sh)
-(cd ./Sources/Speech/Test.Psi.Speech/                                                  && . ./build.sh)
 (cd ./Sources/Runtime/Microsoft.Psi/                                                   && . ./build.sh)
 (cd ./Sources/Runtime/Microsoft.Psi.Interop/                                           && . ./build.sh)
 (cd ./Sources/Runtime/Test.Psi/                                                        && . ./build.sh)
 (cd ./Sources/Toolkits/FiniteStateMachine/Microsoft.Psi.FiniteStateMachine/            && . ./build.sh)
 (cd ./Sources/Tools/PsiStoreTool/                                                      && . ./build.sh)
-(cd ./Samples/RosTurtleSample/                                                         && . ./build.sh)
-(cd ./Samples/LinuxSpeechSample/                                                       && . ./build.sh)

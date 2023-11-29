@@ -22,6 +22,7 @@ namespace Microsoft.Psi.MicrosoftSpeech
     /// - Click <a href="http://go.microsoft.com/fwlink/?LinkID=223568">here</a> to download the Microsoft Speech Platform runtime.
     /// - Click <a href="http://go.microsoft.com/fwlink/?LinkID=223569">here</a> to download the Microsoft Speech Platform language pack.
     /// </remarks>
+    [Obsolete("The MicrosoftSpeechRecognizer component has been deprecated. Consider using the SystemSpeechRecognizer component available in Microsoft.Psi.Speech.Windows instead.", false)]
     public sealed class MicrosoftSpeechIntentDetector : ConsumerProducer<string, IntentData>, ISourceComponent, IDisposable
     {
         /// <summary>
@@ -46,10 +47,10 @@ namespace Microsoft.Psi.MicrosoftSpeech
             this.Configuration = configuration;
 
             // create receiver of grammar updates
-            this.ReceiveGrammars = pipeline.CreateReceiver<IEnumerable<string>>(this, this.SetGrammars, nameof(this.ReceiveGrammars), true);
+            this.ReceiveGrammars = pipeline.CreateReceiver<IEnumerable<string>>(this, this.SetGrammars, nameof(this.ReceiveGrammars));
 
             // create receiver of grammar updates by name
-            this.ReceiveGrammarNames = pipeline.CreateReceiver<string[]>(this, this.EnableGrammars, nameof(this.ReceiveGrammarNames), true);
+            this.ReceiveGrammarNames = pipeline.CreateReceiver<string[]>(this, this.EnableGrammars, nameof(this.ReceiveGrammarNames));
 
             // create output streams for all the event args
             this.LoadGrammarCompleted = pipeline.CreateEmitter<LoadGrammarCompletedEventArgs>(this, nameof(LoadGrammarCompletedEventArgs));
@@ -61,7 +62,7 @@ namespace Microsoft.Psi.MicrosoftSpeech
         /// <summary>
         /// Initializes a new instance of the <see cref="MicrosoftSpeechIntentDetector"/> class.
         /// </summary>
-        /// <param name="pipeline">The Psi pipeline.</param>
+        /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="configurationFilename">The name of the configuration file.</param>
         public MicrosoftSpeechIntentDetector(Pipeline pipeline, string configurationFilename = null)
             : this(
@@ -94,9 +95,9 @@ namespace Microsoft.Psi.MicrosoftSpeech
         /// Replace grammars with given.
         /// </summary>
         /// <param name="srgsXmlGrammars">A collection of XML-format speech grammars that conform to the SRGS 1.0 specification.</param>
-        public void SetGrammars(Message<IEnumerable<string>> srgsXmlGrammars)
+        public void SetGrammars(IEnumerable<string> srgsXmlGrammars)
         {
-            this.speechRecognitionEngine.RequestRecognizerUpdate(srgsXmlGrammars.Data.Select(g =>
+            this.speechRecognitionEngine.RequestRecognizerUpdate(srgsXmlGrammars.Select(g =>
             {
                 using (var xmlReader = XmlReader.Create(new StringReader(g)))
                 {
@@ -109,11 +110,11 @@ namespace Microsoft.Psi.MicrosoftSpeech
         /// Enable all the grammars indicated by name, disabling all others.
         /// </summary>
         /// <param name="grammarNames">Speech grammars.</param>
-        public void EnableGrammars(Message<string[]> grammarNames)
+        public void EnableGrammars(string[] grammarNames)
         {
             foreach (var g in this.speechRecognitionEngine.Grammars)
             {
-                g.Enabled = grammarNames.Data.Contains(g.Name) ? true : false;
+                g.Enabled = grammarNames.Contains(g.Name) ? true : false;
             }
         }
 

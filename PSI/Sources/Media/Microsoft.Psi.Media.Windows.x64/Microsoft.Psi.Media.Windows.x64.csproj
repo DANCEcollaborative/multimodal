@@ -22,9 +22,6 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <DefineConstants>TRACE;DEBUG;NET47</DefineConstants>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(FFMPEGDir)'!=''">
-    <DefineConstants>$(DefineConstants);FFMPEG;WINDOWS</DefineConstants>
-  </PropertyGroup>
   <ItemGroup>
     <None Remove="stylecop.json" />
   </ItemGroup>
@@ -32,9 +29,10 @@
     <AdditionalFiles Include="stylecop.json" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\Shared\FFMPEGMediaSource.cs" />
-  </ItemGroup>
-  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.FxCopAnalyzers" Version="2.9.8">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="StyleCop.Analyzers" Version="1.1.118" PrivateAssets="All" />
     <PackageReference Include="SharpDX.MediaFoundation" Version="4.2.0" />
   </ItemGroup>
@@ -47,7 +45,11 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="$(OutDir)\Microsoft.Psi.Media_Interop.Windows.x64.dll" Pack="true" PackagePath="lib\$(TargetFramework)" />
-    <None Include="$(OutDir)\Microsoft.Psi.Media_Interop.Windows.x64.pdb" Pack="true" PackagePath="lib\$(TargetFramework)" />
     <None Include="$(OutDir)\Microsoft.Psi.Media_Interop.Windows.x64.xml" Pack="true" PackagePath="lib\$(TargetFramework)" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="PresentationCore" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="WindowsBase" />
   </ItemGroup>
 </Project>

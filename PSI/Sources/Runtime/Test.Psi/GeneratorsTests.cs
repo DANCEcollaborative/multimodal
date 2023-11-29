@@ -3,13 +3,13 @@
 
 namespace Test.Psi
 {
-    using Microsoft.Psi;
-    using Microsoft.Psi.Components;
-    using Microsoft.VisualStudio.TestTools.UnitTesting;
     using System;
     using System.Collections.Generic;
     using System.Linq;
     using System.Threading;
+    using Microsoft.Psi;
+    using Microsoft.Psi.Components;
+    using Microsoft.VisualStudio.TestTools.UnitTesting;
 
     /// <summary>
     /// Runs a series of tests for stream generators.
@@ -33,7 +33,7 @@ namespace Test.Psi
                     {
                         values.Add(x);
                         originatingTimes.Add(e.OriginatingTime);
-                        lastMessageTime = e.Time;
+                        lastMessageTime = e.CreationTime;
                     });
                 pipeline.Run(null, enforceReplayClock: true);
 
@@ -52,7 +52,6 @@ namespace Test.Psi
             Assert.IsTrue(lastMessageTime >= originatingTimes.Last());
         }
 
-
         [TestMethod]
         [Timeout(60000)]
         public void RepeatNoClockEnforcement()
@@ -69,7 +68,7 @@ namespace Test.Psi
                     {
                         values.Add(x);
                         originatingTimes.Add(e.OriginatingTime);
-                        lastMessageTime = e.Time;
+                        lastMessageTime = e.CreationTime;
                     });
                 pipeline.Run(null, enforceReplayClock: false);
 
@@ -165,7 +164,7 @@ namespace Test.Psi
                     {
                         values.Add(x);
                         originatingTimes.Add(e.OriginatingTime.Ticks);
-                        messageTimes.Add(e.Time.Ticks);
+                        messageTimes.Add(e.CreationTime.Ticks);
                     });
                 pipeline.Run();
                 Assert.AreEqual(utcNowTicks, pipeline.StartTime.Ticks, TimeSpan.TicksPerSecond);
@@ -206,7 +205,7 @@ namespace Test.Psi
                     {
                         values.Add(x);
                         originatingTimes.Add(e.OriginatingTime.Ticks);
-                        messageTimes.Add(e.Time.Ticks);
+                        messageTimes.Add(e.CreationTime.Ticks);
                     });
                 pipeline.Run();
                 Assert.AreEqual(1000, pipeline.StartTime.Ticks);

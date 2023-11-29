@@ -34,8 +34,9 @@ namespace Microsoft.Psi.Speech
         /// </summary>
         /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="configuration">The component configuration.</param>
-        public SystemSpeechIntentDetector(Pipeline pipeline, SystemSpeechIntentDetectorConfiguration configuration)
-            : base(pipeline)
+        /// <param name="name">An optional name for the component.</param>
+        public SystemSpeechIntentDetector(Pipeline pipeline, SystemSpeechIntentDetectorConfiguration configuration, string name = nameof(SystemSpeechIntentDetector))
+            : base(pipeline, name)
         {
             this.pipeline = pipeline;
             this.Configuration = configuration ?? new SystemSpeechIntentDetectorConfiguration();
@@ -44,7 +45,7 @@ namespace Microsoft.Psi.Speech
             this.speechRecognitionEngine = this.CreateSpeechRecognitionEngine();
 
             // create receivers and emitters
-            this.ReceiveGrammars = pipeline.CreateReceiver<IEnumerable<string>>(this, this.SetGrammars, nameof(this.ReceiveGrammars), true);
+            this.ReceiveGrammars = pipeline.CreateReceiver<IEnumerable<string>>(this, this.SetGrammars, nameof(this.ReceiveGrammars));
             this.LoadGrammarCompleted = pipeline.CreateEmitter<LoadGrammarCompletedEventArgs>(this, nameof(this.LoadGrammarCompleted));
         }
 
@@ -53,10 +54,12 @@ namespace Microsoft.Psi.Speech
         /// </summary>
         /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="configurationFilename">The component configuration file.</param>
-        public SystemSpeechIntentDetector(Pipeline pipeline, string configurationFilename = null)
+        /// <param name="name">An optional name for the component.</param>
+        public SystemSpeechIntentDetector(Pipeline pipeline, string configurationFilename = null, string name = nameof(SystemSpeechIntentDetector))
             : this(
                 pipeline,
-                (configurationFilename == null) ? new SystemSpeechIntentDetectorConfiguration() : new ConfigurationHelper<SystemSpeechIntentDetectorConfiguration>(configurationFilename).Configuration)
+                (configurationFilename == null) ? new SystemSpeechIntentDetectorConfiguration() : new ConfigurationHelper<SystemSpeechIntentDetectorConfiguration>(configurationFilename).Configuration,
+                name)
         {
         }
 
@@ -79,9 +82,9 @@ namespace Microsoft.Psi.Speech
         /// Replace grammars with given.
         /// </summary>
         /// <param name="srgsXmlGrammars">A collection of XML-format speech grammars that conform to the SRGS 1.0 specification.</param>
-        public void SetGrammars(Message<IEnumerable<string>> srgsXmlGrammars)
+        public void SetGrammars(IEnumerable<string> srgsXmlGrammars)
         {
-            this.speechRecognitionEngine.RequestRecognizerUpdate(srgsXmlGrammars.Data.Select(g =>
+            this.speechRecognitionEngine.RequestRecognizerUpdate(srgsXmlGrammars.Select(g =>
             {
                 using (var xmlReader = XmlReader.Create(new StringReader(g)))
                 {
@@ -99,6 +102,7 @@ namespace Microsoft.Psi.Speech
             {
                 // Unregister handlers so they won't fire while disposing.
                 this.speechRecognitionEngine.LoadGrammarCompleted -= this.OnLoadGrammarCompleted;
+                this.speechRecognitionEngine.Dispose();
             }
         }
 

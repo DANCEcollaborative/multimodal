@@ -29,7 +29,7 @@ namespace Microsoft.Psi
                     if (debugStore == null)
                     {
                         debugPipeline = Pipeline.Create(debugStoreName);
-                        debugStore = Store.Create(debugPipeline, debugStoreName, null);
+                        debugStore = PsiStore.Create(debugPipeline, debugStoreName, null);
                         debugPipeline.RunAsync();
                     }
                 }
@@ -71,7 +71,7 @@ namespace Microsoft.Psi
             {
                 lock (syncRoot)
                 {
-                    if (!Store.TryGetMetadata(debugPipeline, debugName, out PsiStreamMetadata meta))
+                    if (!PsiStore.TryGetStreamMetadata(debugPipeline, debugName, out IStreamMetadata meta))
                     {
                         source.Write(debugName, debugStore, deliveryPolicy: deliveryPolicy);
                     }
@@ -143,7 +143,7 @@ namespace Microsoft.Psi
                     {
                         if (receiver.Value.Source != null)
                         {
-                            var emitterComp = pipeline.Components.First(c => c.Outputs.ContainsValue(receiver.Value.Source));
+                            var emitterComp = pipeline.Components.First(c => c.Outputs.Values.Contains(receiver.Value.Source));
                             var emitComponentName = System.Security.SecurityElement.Escape(emitterComp.Name);
                             var emitterName = System.Security.SecurityElement.Escape(pipeline.Components.SelectMany(c => c.Outputs).First(e => e.Value == receiver.Value.Source).Key);
                             var receiverName = System.Security.SecurityElement.Escape(receiver.Key);

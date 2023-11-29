@@ -17,15 +17,17 @@ namespace Microsoft.Psi.Audio
     /// </remarks>
     public sealed class AcousticFeaturesExtractor : IConsumer<AudioBuffer>
     {
-        private Connector<AudioBuffer> inAudio;
+        private readonly string name;
+        private readonly Connector<AudioBuffer> inAudio;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="AcousticFeaturesExtractor"/> class.
         /// </summary>
         /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="configurationFilename">The component configuration file.</param>
-        public AcousticFeaturesExtractor(Pipeline pipeline, string configurationFilename = null)
-            : this(pipeline, new ConfigurationHelper<AcousticFeaturesExtractorConfiguration>(configurationFilename).Configuration)
+        /// <param name="name">An optional name for the component.</param>
+        public AcousticFeaturesExtractor(Pipeline pipeline, string configurationFilename = null, string name = nameof(AcousticFeaturesExtractor))
+            : this(pipeline, new ConfigurationHelper<AcousticFeaturesExtractorConfiguration>(configurationFilename).Configuration, name)
         {
         }
 
@@ -34,20 +36,20 @@ namespace Microsoft.Psi.Audio
         /// </summary>
         /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="configuration">The component configuration.</param>
-        public AcousticFeaturesExtractor(Pipeline pipeline, AcousticFeaturesExtractorConfiguration configuration)
+        /// <param name="name">An optional name for the component.</param>
+        public AcousticFeaturesExtractor(Pipeline pipeline, AcousticFeaturesExtractorConfiguration configuration, string name = nameof(AcousticFeaturesExtractor))
         {
             // Create the Audio passthrough emitter and hook it up to the receiver
+            this.name = name;
             this.inAudio = pipeline.CreateConnector<AudioBuffer>(nameof(this.inAudio));
             this.In = this.inAudio.In;
 
             float frameRate = configuration.FrameRateInHz;
             int frameSize = (int)((configuration.InputFormat.SamplesPerSec * configuration.FrameDurationInSeconds) + 0.5);
             int frameShift = (int)((configuration.InputFormat.SamplesPerSec / frameRate) + 0.5);
-            int frameOverlap = frameSize - frameShift;
             int bytesPerSample = configuration.InputFormat.BlockAlign;
             int bytesPerFrame = bytesPerSample * frameSize;
             int bytesPerFrameShift = bytesPerSample * frameShift;
-            int bytesPerOverlap = bytesPerFrame - bytesPerFrameShift;
             int fftSize = 2;
             while (fftSize < frameSize)
             {
@@ -165,5 +167,8 @@ namespace Microsoft.Psi.Audio
         /// Gets the stream containing the spectral entropy.
         /// </summary>
         public IProducer<float> SpectralEntropy { get; }
+
+        /// <inheritdoc/>
+        public override string ToString() => this.name;
     }
 }

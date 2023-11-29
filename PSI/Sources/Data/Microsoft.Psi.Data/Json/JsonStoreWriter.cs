@@ -54,7 +54,7 @@ namespace Microsoft.Psi.Data.Json
                 Directory.CreateDirectory(this.Path);
             }
 
-            string dataPath = System.IO.Path.Combine(this.Path, StoreCommon.GetDataFileName(this.Name) + this.Extension);
+            string dataPath = System.IO.Path.Combine(this.Path, PsiStoreCommon.GetDataFileName(this.Name) + this.Extension);
             this.streamWriter = File.CreateText(dataPath);
             this.jsonWriter = new JsonTextWriter(this.streamWriter);
             this.jsonWriter.WriteStartArray();
@@ -67,6 +67,7 @@ namespace Microsoft.Psi.Data.Json
             this.jsonWriter.WriteEndArray();
             this.streamWriter.Dispose();
             this.streamWriter = null;
+            this.jsonWriter.Close();
             this.jsonWriter = null;
         }
 
@@ -99,7 +100,7 @@ namespace Microsoft.Psi.Data.Json
                 throw new InvalidOperationException($"The stream id {streamId} has already been registered with this writer.");
             }
 
-            var metadata = new JsonStreamMetadata() { Id = streamId, Name = streamName, PartitionName = this.Name, PartitionPath = this.Path, TypeName = typeName };
+            var metadata = new JsonStreamMetadata() { Id = streamId, Name = streamName, StoreName = this.Name, StorePath = this.Path, TypeName = typeName };
             this.catalog[metadata.Id] = metadata;
             this.WriteCatalog(); // ensure catalog is up to date even if crashing later
             return metadata;
@@ -119,7 +120,7 @@ namespace Microsoft.Psi.Data.Json
 
         private void WriteCatalog()
         {
-            string metadataPath = System.IO.Path.Combine(this.Path, StoreCommon.GetCatalogFileName(this.Name) + this.Extension);
+            string metadataPath = System.IO.Path.Combine(this.Path, PsiStoreCommon.GetCatalogFileName(this.Name) + this.Extension);
             using (var file = File.CreateText(metadataPath))
             using (var writer = new JsonTextWriter(file))
             {
@@ -139,7 +140,7 @@ namespace Microsoft.Psi.Data.Json
             writer.WritePropertyName("OriginatingTime");
             writer.WriteValue(envelope.OriginatingTime);
             writer.WritePropertyName("Time");
-            writer.WriteValue(envelope.Time);
+            writer.WriteValue(envelope.CreationTime);
             writer.WriteEndObject();
             writer.WritePropertyName("Data");
             data.WriteTo(writer);

@@ -16,29 +16,30 @@ namespace Microsoft.Psi.Components
     /// The static functions provided by the <see cref="Generators"/> wrap <see cref="Generator{T}"/>
     /// and are designed to make the common cases easier.
     /// </remarks>
-    public class Generator<T> : Generator, IProducer<T>
+    public class Generator<T> : Generator, IProducer<T>, IDisposable
     {
         private readonly Enumerator enumerator;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="Generator{T}"/> class.
         /// </summary>
-        /// <param name="pipeline">The pipeline to attach to.</param>
+        /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="enumerator">A lazy enumerator of data.</param>
         /// <param name="interval">The interval used to increment time on each generated message.</param>
-        /// <param name="alignDateTime">If non-null, this parameter specifies a time to align the generator messages with. If the paramater
+        /// <param name="alignDateTime">If non-null, this parameter specifies a time to align the generator messages with. If the parameter
         /// is non-null, the messages will have originating times that align with the specified time.</param>
         /// <param name="isInfiniteSource">If true, mark this Generator instance as representing an infinite source (e.g., a live-running sensor).
         /// If false (default), it represents a finite source (e.g., Generating messages based on a finite file or IEnumerable).</param>
-        public Generator(Pipeline pipeline, IEnumerator<T> enumerator, TimeSpan interval, DateTime? alignDateTime = null, bool isInfiniteSource = false)
-            : this(pipeline, CreateEnumerator(pipeline, enumerator, interval, alignDateTime), null, isInfiniteSource)
+        /// <param name="name">An optional name for the component.</param>
+        public Generator(Pipeline pipeline, IEnumerator<T> enumerator, TimeSpan interval, DateTime? alignDateTime = null, bool isInfiniteSource = false, string name = nameof(Generator))
+            : this(pipeline, CreateEnumerator(pipeline, enumerator, interval, alignDateTime), null, isInfiniteSource, name)
         {
         }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="Generator{T}"/> class.
         /// </summary>
-        /// <param name="pipeline">The pipeline to attach to.</param>
+        /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="enumerator">A lazy enumerator of data.</param>
         /// <param name="startTime">The explicit start time of the data in the enumeration. Supply this parameter when the enumeration contains
         /// data values with absolute originating times (e.g. [value, time] pairs read from a file), and you want to propose a pipeline replay
@@ -46,8 +47,9 @@ namespace Microsoft.Psi.Components
         /// account any other components in the pipeline which may have proposed replay times.</param>
         /// <param name="isInfiniteSource">If true, mark this Generator instance as representing an infinite source (e.g., a live-running sensor).
         /// If false (default), it represents a finite source (e.g., Generating messages based on a finite file or IEnumerable).</param>
-        public Generator(Pipeline pipeline, IEnumerator<(T, DateTime)> enumerator, DateTime? startTime = null, bool isInfiniteSource = false)
-            : base(pipeline, isInfiniteSource)
+        /// <param name="name">An optional name for the component.</param>
+        public Generator(Pipeline pipeline, IEnumerator<(T, DateTime)> enumerator, DateTime? startTime = null, bool isInfiniteSource = false, string name = nameof(Generator))
+            : base(pipeline, isInfiniteSource, name)
         {
             this.Out = pipeline.CreateEmitter<T>(this, nameof(this.Out));
             this.enumerator = new Enumerator(enumerator);
@@ -64,6 +66,12 @@ namespace Microsoft.Psi.Components
         /// Gets the output stream.
         /// </summary>
         public Emitter<T> Out { get; }
+
+        /// <inheritdoc/>
+        public void Dispose()
+        {
+            this.enumerator?.Dispose();
+        }
 
         /// <summary>
         /// Called to generate the next value.

@@ -3,6 +3,7 @@
 
 namespace Microsoft.Psi.CognitiveServices.Vision
 {
+    using System;
     using System.Collections.Generic;
     using System.IO;
     using System.Threading.Tasks;
@@ -17,8 +18,9 @@ namespace Microsoft.Psi.CognitiveServices.Vision
     /// <remarks>A <a href="https://azure.microsoft.com/en-us/services/cognitive-services/computer-vision/">Microsoft Cognitive Services Vision API</a>
     /// subscription key is required to use this component. For more information, see the full direct API for.
     /// <a href="https://azure.microsoft.com/en-us/services/cognitive-services/computer-vision/">Microsoft Cognitive Services Vision API</a></remarks>
-    public sealed class ImageAnalyzer
+    public sealed class ImageAnalyzer : IConsumer<Shared<Image>>, IProducer<ImageAnalysis>
     {
+        private readonly string name;
         private readonly ComputerVisionClient computerVisionClient;
         private readonly ImageAnalyzerConfiguration configuration;
 
@@ -27,8 +29,10 @@ namespace Microsoft.Psi.CognitiveServices.Vision
         /// </summary>
         /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="configuration">The image analyzer configuration.</param>
-        public ImageAnalyzer(Pipeline pipeline, ImageAnalyzerConfiguration configuration = null)
+        /// <param name="name">An optional name for the component.</param>
+        public ImageAnalyzer(Pipeline pipeline, ImageAnalyzerConfiguration configuration = null, string name = nameof(ImageAnalyzer))
         {
+            this.name = name;
             this.configuration = configuration ?? new ImageAnalyzerConfiguration();
             this.Out = pipeline.CreateEmitter<ImageAnalysis>(this, nameof(this.Out));
             this.In = pipeline.CreateAsyncReceiver<Shared<Image>>(this, this.ReceiveAsync, nameof(this.In));
@@ -45,6 +49,9 @@ namespace Microsoft.Psi.CognitiveServices.Vision
         /// Gets the output stream of analysis results.
         /// </summary>
         public Emitter<ImageAnalysis> Out { get; }
+
+        /// <inheritdoc/>
+        public override string ToString() => this.name;
 
         #region Static methods for parsing results to strings
 
@@ -237,21 +244,21 @@ namespace Microsoft.Psi.CognitiveServices.Vision
         {
             var analysisResult = default(ImageAnalysis);
 
-            if (data != null)
+            if (data != null && data.Resource != null)
             {
-                using (Stream imageFileStream = new MemoryStream())
+                using Stream imageFileStream = new MemoryStream();
+
+                // convert image to a stream and send to service
+                data.Resource.ToBitmap(false).Save(imageFileStream, System.Drawing.Imaging.ImageFormat.Jpeg);
+                imageFileStream.Seek(0, SeekOrigin.Begin);
+
+                try
                 {
-                    // convert image to a stream and send to service
-                    data.Resource.ToManagedImage(false).Save(imageFileStream, System.Drawing.Imaging.ImageFormat.Jpeg);
-                    imageFileStream.Seek(0, SeekOrigin.Begin);
-                    try
-                    {
-                        analysisResult = await this.computerVisionClient?.AnalyzeImageInStreamAsync(imageFileStream, this.configuration.VisualFeatures);
-                    }
-                    catch
-                    {
-                        // automatically swallow exceptions
-                    }
+                    analysisResult = await this.computerVisionClient?.AnalyzeImageInStreamAsync(imageFileStream, this.configuration.VisualFeatures);
+                }
+                catch
+                {
+                    // automatically swallow exceptions
                 }
             }
 
@@ -260,11 +267,23 @@ namespace Microsoft.Psi.CognitiveServices.Vision
 
         private ComputerVisionClient CreateClient()
         {
+            if (string.IsNullOrEmpty(this.configuration.SubscriptionKey))
+            {
+                throw new InvalidOperationException(
+                    $"In order to use this component, you must specify a valid Azure ComputerVision subscription key in the {nameof(ImageAnalyzerConfiguration.SubscriptionKey)} property of the {nameof(ImageAnalyzerConfiguration)} object used to initialize this component.");
+            }
+
+            if (string.IsNullOrEmpty(this.configuration.Region))
+            {
+                throw new InvalidOperationException(
+                    $"In order to use this component, you must set the {nameof(ImageAnalyzerConfiguration.Region)} property of the {nameof(ImageAnalyzerConfiguration)} object used to initialize this component to the location of the ComputerVision resource in your Azure subscription, (e.g. westus, westus2, etc.).");
+            }
+
             return new ComputerVisionClient(
                 new ApiKeyServiceClientCredentials(this.configuration.SubscriptionKey),
                 new System.Net.Http.DelegatingHandler[] { })
             {
-                Endpoint = "https://westus.api.cognitive.microsoft.com/",
+                Endpoint = string.Format("https://{0}.api.cognitive.microsoft.com/", this.configuration.Region),
             };
         }
     }

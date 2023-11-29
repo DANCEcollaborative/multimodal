@@ -39,7 +39,7 @@ namespace Microsoft.Msagl.WpfGraphControl
     /// <summary>
     /// Graph viewer.
     /// </summary>
-    public class GraphViewer : IViewer
+    public class GraphViewer : IViewer, IDisposable
     {
         private const double DesiredPathThicknessInInches = 0.008;
 
@@ -513,6 +513,12 @@ namespace Microsoft.Msagl.WpfGraphControl
             return new Size(formattedText.Width, formattedText.Height);
         }
 
+        /// <inheritdoc/>
+        public void Dispose()
+        {
+            this.backgroundWorker?.Dispose();
+        }
+
         /// <summary>
         /// Update graph being viewed in place (assuming structure hasn't changed, otherwise triggers full re-layout).
         /// </summary>
@@ -559,28 +565,39 @@ namespace Microsoft.Msagl.WpfGraphControl
 
                 // Get node drawing object and update label TextBlock and Path in-place
                 var nodeDrawingObj = this.drawingObjectsToIViewerObjects[m] as VNode;
-                (nodeDrawingObj.FrameworkElementOfNodeForLabel as TextBlock).Foreground = Common.BrushFromMsaglColor(n.Label.FontColor);
+                var textBlock = nodeDrawingObj.FrameworkElementOfNodeForLabel as TextBlock;
+                (var text, var tooltip) = VNode.GetLabelTextAndToolTip(n.LabelText);
+                textBlock.Text = text;
+                textBlock.ToolTip = tooltip;
+                textBlock.Foreground = Common.BrushFromMsaglColor(n.Label.FontColor);
                 nodeDrawingObj.BoundaryPath.Stroke = Common.BrushFromMsaglColor(n.Attr.Color);
                 nodeDrawingObj.BoundaryPath.Fill = Common.BrushFromMsaglColor(n.Attr.FillColor);
 
                 foreach (var e in n.Edges)
                 {
-                    var f = m.Edges.Where(x => x.Source == e.Source && x.Target == e.Target).FirstOrDefault();
-                    if (f == null)
+                    var matchingEdges = m.Edges.Where(x => x.Source == e.Source && x.Target == e.Target && (int)x.UserData == (int)e.UserData);
+
+                    if (!matchingEdges.Any())
                     {
                         // New edge? Rebuild
                         this.Graph = graph;
                         return;
                     }
+                    else if (matchingEdges.Count() > 1)
+                    {
+                        throw new Exception("Multiple existing edges match the same incoming edge by UserData.");
+                    }
 
                     // Get edge drawing object and update label TextBlock and Paths in-place
-                    var edgeDrawingObj = this.drawingObjectsToIViewerObjects[f] as VEdge;
+                    var edgeDrawingObj = this.drawingObjectsToIViewerObjects[matchingEdges.First()] as VEdge;
                     var edgeColor = Common.BrushFromMsaglColor(e.Attr.Color);
                     edgeDrawingObj.CurvePath.Stroke = edgeColor;
                     edgeDrawingObj.TargetArrowHeadPath.Stroke = edgeColor;
                     edgeDrawingObj.TargetArrowHeadPath.Fill = edgeColor;
                     edgeDrawingObj.CurvePath.StrokeThickness = e.Attr.LineWidth;
-                    (edgeDrawingObj.VLabel.FrameworkElement as TextBlock).Text = e.LabelText;
+                    var edgeLabelTextBlock = edgeDrawingObj.VLabel.FrameworkElement as TextBlock;
+                    edgeLabelTextBlock.Text = e.LabelText;
+                    edgeLabelTextBlock.Foreground = edgeColor;
                 }
             }
         }
@@ -1961,7 +1978,8 @@ namespace Microsoft.Msagl.WpfGraphControl
             }
             else
             {
-                double a = ((double)subgraph.LabelText.Length) / this.textBoxForApproxNodeBoundaries.Text.Length *
+                (var text, _) = VNode.GetLabelTextAndToolTip(subgraph.LabelText);
+                double a = ((double)text.Length) / this.textBoxForApproxNodeBoundaries.Text.Length *
                            subgraph.Label.FontSize / Label.DefaultFontSize;
                 width = this.textBoxForApproxNodeBoundaries.Width * a + subgraph.DiameterOfOpenCollapseButton;
                 height =
@@ -2031,7 +2049,8 @@ namespace Microsoft.Msagl.WpfGraphControl
             }
             else
             {
-                var size = MeasureText(node.LabelText, new FontFamily(node.Label.FontName), node.Label.FontSize, this.graphCanvas);
+                (var text, _) = VNode.GetLabelTextAndToolTip(node.LabelText);
+                var size = MeasureText(text, new FontFamily(node.Label.FontName), node.Label.FontSize, this.graphCanvas);
                 width = size.Width;
                 height = size.Height;
             }

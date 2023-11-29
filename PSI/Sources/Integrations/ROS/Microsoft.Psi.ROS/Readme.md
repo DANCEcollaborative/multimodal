@@ -6,8 +6,8 @@ Here we briefly explain the ROS architecture and the bridge layer.
 
 The following tutorials may help to get started:
 
-* [PsiRosTurtleSample](https://github.com/Microsoft/psi/tree/master/Samples/RosTurtleSample/) - simple tutorial to control `turtlesim` (no hardware required)
-* [ArmControlROSSample](https://github.com/Microsoft/psi/tree/master/Samples/RosArmControlSample/) - tutorial to control the [uArm Metal](http://ufactory.cc/#/en/uarm1) (hardware required)
+* [PsiRosTurtleSample](https://github.com/Microsoft/psi-samples/tree/main/Samples/RosTurtleSample/) - simple tutorial to control `turtlesim` (no hardware required)
+* [ArmControlROSSample](https://github.com/Microsoft/psi-samples/tree/main/Samples/RosArmControlSample/) - tutorial to control the [uArm Metal](http://ufactory.cc/#/en/uarm1) (hardware required)
 
 ## ROS
 
@@ -31,7 +31,7 @@ It is physically hosted by the ROS Master at the same host/port as the ROS Maste
 
 ## Bridge
 
-At its core, the library includes an `XmlRpc` reader/writer, ROS TCP header and body serializers, and classes to manage communication with the ROS Master, the Parameter Server, and ROS Slave client.
+At its core, the library includes an `XmlRpc` reader/writer, ROS TCP header and body serializers, and classes to manage communication with the ROS Master, the Parameter Server, and ROS Node client.
 These are the fundamental pieces from which everything else is built.
 
 Moving up a layer, there are `Publisher` and `Subscriber` classes to manage many-to-many connections through topics.
@@ -216,11 +216,11 @@ Though not mentioned below, all requests contain the `caller_id` and a response 
 Not found returns a -1 status code.
 This is mapped an `Option` type in F#
 
-***Subscription causes calls to `paramUpdate` in the ROS Slave APIs (see below).
+***Subscription causes calls to `paramUpdate` in the ROS APIs (see below).
 
-### ROS Slaves/Nodes
+### ROS Nodes
 
-[Communication with ROS slaves (nodes) via XmlRpc methods](http://wiki.ros.org/ROS/Slave_API) includes the following APIs.
+[Communication with ROS nodes via XmlRpc methods](http://wiki.ros.org/ROS/Slave_API) includes the following APIs.
 Though not mentioned below, all requests contain the `caller_id` and a response body bundled with states code/message (see XmlRpc section above).
 
 * `getBusStats () -> bus_stats` (see docs)
@@ -248,7 +248,7 @@ Connections are negotiated with *each* of them separately.
 This makes for a very distributed and scalable system, but means that N subscribers to M publishers create a N*M pipes between Nodes.
 For this reason, sometimes there are aggregator noted (e.g. `rosout_agg`) that relay messages, making for N+M connections.
 
-There are a lot of other APIs and communication that happen mainly between the ROS Master and the ROS Slaves (Nodes).
+There are a lot of other APIs and communication that happen mainly between the ROS Master and the ROS Nodes.
 The Master may be queried to `lookupNode` or `lookupService`, `getPublishedTopics`, `getTopicTypes`, `getSystemState`, etc.
 Nodes may be queried to `getBusStats`, `getBusInfo`, `getMasterUri`, `getPid`, `getPublications`, `getSubscriptions`, etc.
 These queries are used by various tools and by Nodes to inspect a running system and to discover and dynamically construct the graph.

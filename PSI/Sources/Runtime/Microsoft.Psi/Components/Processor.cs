@@ -18,21 +18,27 @@ namespace Microsoft.Psi.Components
     /// <typeparam name="TOut">The result type.</typeparam>
     public class Processor<TIn, TOut> : ConsumerProducer<TIn, TOut>
     {
-        private Action<TIn, Envelope, Emitter<TOut>> transform;
+        private readonly Action<TIn, Envelope, Emitter<TOut>> transform;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="Processor{TIn, TOut}"/> class.
         /// </summary>
-        /// <param name="pipeline">The pipeline to attach to.</param>
+        /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="transform">A delegate that processes the input data and potentially publishes a result on the provided <see cref="Emitter{T}"/>.</param>
-        public Processor(Pipeline pipeline, Action<TIn, Envelope, Emitter<TOut>> transform)
-            : base(pipeline)
+        /// <param name="onClose">An optional action to execute when the input stream closes.</param>
+        /// <param name="name">An optional name for this component.</param>
+        public Processor(Pipeline pipeline, Action<TIn, Envelope, Emitter<TOut>> transform, Action<DateTime, Emitter<TOut>> onClose = null, string name = nameof(Processor<TIn, TOut>))
+            : base(pipeline, name)
         {
             this.transform = transform;
+            if (onClose != null)
+            {
+                this.In.Unsubscribed += closingTime => onClose(closingTime, this.Out);
+            }
         }
 
         /// <summary>
-        /// Override this method to process the incomming message and potentially publish one or more output messages.
+        /// Override this method to process the incoming message and potentially publish one or more output messages.
         /// The input message payload is only valid for the duration of the call.
         /// If the data needs to be stored beyond the scope of this method,
         /// use the extension method <see cref="Serializer.DeepClone{T}(T, ref T)"/> to create a private copy.

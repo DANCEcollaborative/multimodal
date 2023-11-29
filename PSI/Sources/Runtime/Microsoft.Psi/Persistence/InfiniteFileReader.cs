@@ -65,20 +65,13 @@ namespace Microsoft.Psi.Persistence
             return true;
         }
 
-        /// <summary>
-        /// Indicates whether more data might be added to this file
-        /// (i.e. the file still has an active writer).
-        /// </summary>
-        /// <returns>Returns true if there is an active writer to this file.</returns>
-        public bool IsMoreDataExpected()
-        {
-            return InfiniteFileWriter.IsActive(this.fileName, this.path);
-        }
-
         public void Dispose()
         {
             this.writePulse.Dispose();
             this.CloseCurrent();
+
+            // may have already been disposed in CloseCurrent
+            this.view?.Dispose();
         }
 
         // Seeks to the next block (assumes the position points to a block entry)
@@ -99,7 +92,7 @@ namespace Microsoft.Psi.Persistence
         /// <summary>
         /// Returns true if we are in the middle of a block or
         /// if we are positioned at the start of the block and the block size prefix is greater than zero.
-        /// If false, use <see cref="IsMoreDataExpected"/> to determine if there could ever be more data
+        /// If false, use <see cref="PsiStoreMonitor.IsStoreLive(string, string)"/> to determine if there could ever be more data
         /// (i.e. if a writer is still active).
         /// </summary>
         /// <returns>True if more data is present, false if no more data is available.</returns>
@@ -121,7 +114,9 @@ namespace Microsoft.Psi.Persistence
             this.remainingBlockSize = *(int*)(this.startPointer + this.currentPosition);
             if (this.remainingBlockSize == 0)
             {
-                // a zero block size means there is no more data to read (for now)
+                // A zero block size means there is no more data to read for now. This
+                // may change if more data is subsequently written to this extent, if
+                // it is open for simultaneous reading/writing.
                 return false;
             }
 
@@ -135,9 +130,10 @@ namespace Microsoft.Psi.Persistence
 #endif
             this.currentPosition += sizeof(int);
 
-            // eof?
+            // a negative remaining block size indicates we have reached the end of the extent
             if (this.remainingBlockSize < 0)
             {
+                // clear the start pointer and move to the next extent
                 this.startPointer = null;
                 return this.MoveNext();
             }
@@ -191,19 +187,21 @@ namespace Microsoft.Psi.Persistence
 
         private void LoadNextExtent()
         {
-            // get the name of the new file from the old file
+            // If there is a current extent open, it means we have reached the EOF and remainingBlockSize
+            // will be a negative number whose absolute value represents the next file extent id.
             if (this.mappedFile != null)
             {
-                this.fileId = -this.remainingBlockSize; // we've read the EOF when reading the remaining size
+                // Get the fileId of the next extent to load and close the current extent.
+                this.fileId = -this.remainingBlockSize;
                 this.CloseCurrent();
             }
 
-            string name = string.Format(InfiniteFileWriter.FileNameFormat, this.fileName, this.fileId);
+            string extentName = string.Format(InfiniteFileWriter.FileNameFormat, this.fileName, this.fileId);
 
             if (this.path != null)
             {
                 // create a new MMF from persisted file, if the file can be found
-                string fullName = System.IO.Path.Combine(this.path, name);
+                string fullName = System.IO.Path.Combine(this.path, extentName);
                 if (File.Exists(fullName))
                 {
                     int maxAttempts = 5;
@@ -216,10 +214,8 @@ namespace Microsoft.Psi.Persistence
                     {
                         try
                         {
-                            using (var file = File.Open(fullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                            {
-                                this.mappedFile = MemoryMappedFile.CreateFromFile(file, null, 0, MemoryMappedFileAccess.Read, HandleInheritability.Inheritable, false);
-                            }
+                            var file = File.Open(fullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                            this.mappedFile = MemoryMappedFile.CreateFromFile(file, null, 0, MemoryMappedFileAccess.Read, HandleInheritability.Inheritable, false);
                         }
                         catch (IOException)
                         {
@@ -236,7 +232,14 @@ namespace Microsoft.Psi.Persistence
             if (this.mappedFile == null)
             {
                 // attach to an in-memory MMF
-                this.mappedFile = MemoryMappedFile.OpenExisting(name);
+                try
+                {
+                    this.mappedFile = MemoryMappedFile.OpenExisting(extentName);
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception($"Failed to open extent: {extentName}.", ex);
+                }
             }
 
             this.view = this.mappedFile.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);

@@ -13,6 +13,7 @@ namespace Microsoft.Psi.Components
     /// <typeparam name="TOut">The type of output message.</typeparam>
     public class Pair<TPrimary, TSecondary, TOut> : IProducer<TOut>
     {
+        private readonly string name;
         private readonly Func<TPrimary, TSecondary, TOut> outputCreator;
         private bool secondaryValueReady = false;
         private TSecondary lastSecondaryValue = default;
@@ -20,13 +21,15 @@ namespace Microsoft.Psi.Components
         /// <summary>
         /// Initializes a new instance of the <see cref="Pair{TPrimary, TSecondary, TOut}"/> class.
         /// </summary>
-        /// <param name="pipeline">The pipeline to which to attach.</param>
+        /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="outputCreator">Mapping function from primary/secondary stream values to output type.</param>
+        /// <param name="name">An optional name for the component.</param>
         public Pair(
             Pipeline pipeline,
-            Func<TPrimary, TSecondary, TOut> outputCreator)
-            : base()
+            Func<TPrimary, TSecondary, TOut> outputCreator,
+            string name = nameof(Pair<TPrimary, TSecondary, TOut>))
         {
+            this.name = name;
             this.outputCreator = outputCreator;
             this.Out = pipeline.CreateEmitter<TOut>(this, nameof(this.Out));
             this.InPrimary = pipeline.CreateReceiver<TPrimary>(this, this.ReceivePrimary, nameof(this.InPrimary));
@@ -36,14 +39,16 @@ namespace Microsoft.Psi.Components
         /// <summary>
         /// Initializes a new instance of the <see cref="Pair{TPrimary, TSecondary, TOut}"/> class.
         /// </summary>
-        /// <param name="pipeline">The pipeline to which to attach.</param>
+        /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="outputCreator">Mapping function from primary/secondary stream values to output type.</param>
         /// <param name="initialSecondaryValue">An initial secondary value to be used until the first message arrives on the secondary stream.</param>
+        /// <param name="name">An optional name for the component.</param>
         public Pair(
             Pipeline pipeline,
             Func<TPrimary, TSecondary, TOut> outputCreator,
-            TSecondary initialSecondaryValue)
-            : this(pipeline, outputCreator)
+            TSecondary initialSecondaryValue,
+            string name = nameof(Pair<TPrimary, TSecondary, TOut>))
+            : this(pipeline, outputCreator, name)
         {
             this.secondaryValueReady = true;
             this.lastSecondaryValue = initialSecondaryValue;
@@ -63,6 +68,9 @@ namespace Microsoft.Psi.Components
         /// Gets the secondary receiver.
         /// </summary>
         public Receiver<TSecondary> InSecondary { get; }
+
+        /// <inheritdoc/>
+        public override string ToString() => this.name;
 
         private void ReceivePrimary(TPrimary message, Envelope e)
         {

@@ -22,8 +22,9 @@ namespace Microsoft.Psi.Audio
         /// </summary>
         /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="frameSizeInBytes">The output frame size in bytes.</param>
-        public Reframe(Pipeline pipeline, int frameSizeInBytes)
-            : base(pipeline)
+        /// <param name="name">An optional name for this component.</param>
+        public Reframe(Pipeline pipeline, int frameSizeInBytes, string name = nameof(Reframe))
+            : base(pipeline, name)
         {
             if (frameSizeInBytes <= 0)
             {
@@ -38,8 +39,9 @@ namespace Microsoft.Psi.Audio
         /// </summary>
         /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="frameDuration">The output frame duration.</param>
-        public Reframe(Pipeline pipeline, TimeSpan frameDuration)
-            : base(pipeline)
+        /// <param name="name">An optional name for this component.</param>
+        public Reframe(Pipeline pipeline, TimeSpan frameDuration, string name = nameof(Reframe))
+            : base(pipeline, name)
         {
             if (frameDuration <= TimeSpan.Zero)
             {
@@ -101,8 +103,7 @@ namespace Microsoft.Psi.Audio
                     this.lastOriginatingTime = originatingTime;
 
                     // Post the completed frame
-                    byte[] frame = this.frameBuffer;
-                    this.Out.Post(new AudioBuffer(frame, audio.Format), originatingTime);
+                    this.Out.Post(new AudioBuffer(this.frameBuffer, audio.Format), originatingTime);
 
                     // Reset the frame
                     this.frameBytesRemaining = this.frameSizeInBytes;

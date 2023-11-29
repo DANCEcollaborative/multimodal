@@ -11,13 +11,15 @@ namespace Microsoft.Psi.Serialization
     /// <typeparam name="T">A primitive type (pure value type).</typeparam>
     internal sealed class SimpleSerializer<T> : ISerializer<T>
     {
-        private const int Version = 0;
         private SerializeDelegate<T> serializeImpl;
         private DeserializeDelegate<T> deserializeImpl;
 
+        /// <inheritdoc />
+        public bool? IsClearRequired => false;
+
         public TypeSchema Initialize(KnownSerializers serializers, TypeSchema targetSchema)
         {
-            var schema = TypeSchema.FromType(typeof(T), serializers.RuntimeVersion, this.GetType(), Version);
+            var schema = TypeSchema.FromType(typeof(T), this.GetType().AssemblyQualifiedName, serializers.RuntimeInfo.SerializationSystemVersion);
             this.serializeImpl = Generator.GenerateSerializeMethod<T>(il => Generator.EmitPrimitiveSerialize(typeof(T), il));
             this.deserializeImpl = Generator.GenerateDeserializeMethod<T>(il => Generator.EmitPrimitiveDeserialize(typeof(T), il));
             return targetSchema ?? schema;

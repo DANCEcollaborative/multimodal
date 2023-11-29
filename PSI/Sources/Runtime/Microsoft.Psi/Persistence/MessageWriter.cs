@@ -17,23 +17,9 @@ namespace Microsoft.Psi.Persistence
         private const int DefaultRetentionQueueLength64 = 6;
         private const int DefaultRetentionQueueLength32 = 0;
         private InfiniteFileWriter fileWriter;
-        private string name;
-        private string path;
 
-        public MessageWriter(string name, string path, bool append)
-            : this(name, path, 0, append)
+        public MessageWriter(string name, string path, int extentSize = 0)
         {
-        }
-
-        public MessageWriter(string name, string path = null, int extentSize = 0)
-            : this(name, path, extentSize, false)
-        {
-        }
-
-        internal MessageWriter(string name, string path, int extentSize, bool append)
-        {
-            this.name = name;
-            this.path = path;
             if (extentSize == 0)
             {
                 extentSize = Environment.Is64BitProcess ? DefaultExtentCapacity64 : DefaultExtentCapacity32;
@@ -41,7 +27,7 @@ namespace Microsoft.Psi.Persistence
 
             if (path != null)
             {
-                this.fileWriter = new InfiniteFileWriter(path, name, extentSize, append);
+                this.fileWriter = new InfiniteFileWriter(path, name, extentSize);
             }
             else
             {
@@ -70,7 +56,7 @@ namespace Microsoft.Psi.Persistence
 
         public int Write(Envelope envelope, byte[] source, int start, int count)
         {
-            // for now, lock. To get rid of it we need to split an ExtentWriter out of the InifinteFileWriter
+            // for now, lock. To get rid of it we need to split an ExtentWriter out of the InfiniteFileWriter
             lock (this.fileWriter)
             {
                 unsafe

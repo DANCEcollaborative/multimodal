@@ -86,7 +86,7 @@ namespace Microsoft.Psi.Streams
         /// <returns>True if oldest message that satisfies the policy is found.</returns>
         public bool TryDequeue(out Message<T> message, out QueueTransition stateTransition, DateTime currentTime, DiagnosticsCollector.ReceiverCollector receiverCollector, Action<QueueTransition> stateTransitionAction)
         {
-            message = default(Message<T>);
+            message = default;
             bool found = false;
 
             lock (this.queue)
@@ -106,7 +106,7 @@ namespace Microsoft.Psi.Streams
                     {
                         // Because this message has a latency that is larger than the policy allowed, we are dropping this message and
                         // finding the next message with smaller latency.
-                        receiverCollector?.MessageDropped(this.Count, message.Envelope);
+                        receiverCollector?.MessageDropped(currentTime);
                         this.cloner.Recycle(oldest.Data);
                         this.counters?.Increment(ReceiverCounters.Dropped);
                     }
@@ -123,6 +123,8 @@ namespace Microsoft.Psi.Streams
                 stateTransition = this.UpdateState();
                 stateTransitionAction?.Invoke(stateTransition);
 
+                receiverCollector?.QueueSizeUpdate(this.queue.Count, currentTime);
+
                 return found;
             }
         }
@@ -131,14 +133,21 @@ namespace Microsoft.Psi.Streams
         /// Enqueue the message while respecting the defined delivery policy.
         /// </summary>
         /// <param name="message">The new message.</param>
-        /// <param name="stateTransition">The struct describing the status of the internal queue.</param>
-        /// <param name="receiverCollector">Diagnostics collector for this receiver.</param>
+        /// <param name="receiverDiagnosticsCollector">Diagnostics collector for this receiver.</param>
+        /// <param name="diagnosticsTime">The time at which diagnostic information is captured about the message being enqueued.</param>
         /// <param name="stateTransitionAction">Action to perform after the queue state transition has been evaluated.</param>
-        public void Enqueue(Message<T> message, out QueueTransition stateTransition, DiagnosticsCollector.ReceiverCollector receiverCollector, Action<QueueTransition> stateTransitionAction)
+        /// <param name="stateTransition">The struct describing the status of the internal queue.</param>
+        public void Enqueue(
+            Message<T> message,
+            DiagnosticsCollector.ReceiverCollector receiverDiagnosticsCollector,
+            DateTime diagnosticsTime,
+            Action<QueueTransition> stateTransitionAction,
+            out QueueTransition stateTransition)
         {
             lock (this.queue)
             {
-                var dropIncomingMessage = false;
+                bool dropIncomingMessage = false;
+                bool IsClosingMessage(Message<T> m) => m.SequenceId == int.MaxValue;
 
                 // If the queue size is more than the allowed size in the policy, try to drop messages in the queue
                 // if possible, until we create enough space to hold the new message
@@ -148,7 +157,7 @@ namespace Microsoft.Psi.Streams
                     {
                         // if we have no guarantees on the policy, then just drop the oldest message
                         var item = this.queue.Dequeue();
-                        receiverCollector?.MessageDropped(this.Count, message.Envelope);
+                        receiverDiagnosticsCollector?.MessageDropped(diagnosticsTime);
                         this.cloner.Recycle(item.Data);
                         this.counters?.Increment(ReceiverCounters.Dropped);
                     }
@@ -163,7 +172,8 @@ namespace Microsoft.Psi.Streams
                             // that means all messages in the queue have guaranteed delivery and cannot
                             // be dropped. In this case, we avoid further growing the queue by simply
                             // dropping the incoming message if it does not have guaranteed delivery
-                            dropIncomingMessage = !this.policy.GuaranteeDelivery(message.Data);
+                            // (unless it is a closing message, which we should never drop)
+                            dropIncomingMessage = !IsClosingMessage(message) && !this.policy.GuaranteeDelivery(message.Data);
                         }
                         else
                         {
@@ -189,10 +199,10 @@ namespace Microsoft.Psi.Streams
                                 var item = this.queue.Dequeue();
 
                                 // if no messages has been dropped yet and this message can be dropped
-                                if (!hasDropped && !this.policy.GuaranteeDelivery(item.Data))
+                                if (!hasDropped && !IsClosingMessage(item) && !this.policy.GuaranteeDelivery(item.Data))
                                 {
                                     // then drop it
-                                    receiverCollector?.MessageDropped(this.Count, message.Envelope);
+                                    receiverDiagnosticsCollector?.MessageDropped(diagnosticsTime);
                                     this.cloner.Recycle(item.Data);
                                     this.counters?.Increment(ReceiverCounters.Dropped);
                                     hasDropped = true;
@@ -205,32 +215,36 @@ namespace Microsoft.Psi.Streams
                             }
 
                             // if at this point we haven't found something to drop, we should drop the
-                            // incoming message, if it does not have guaranteed delivery
-                            dropIncomingMessage = !hasDropped && !this.policy.GuaranteeDelivery(message.Data);
+                            // incoming message, if it does not have guaranteed delivery and is not a
+                            // closing message
+                            dropIncomingMessage = !hasDropped && !IsClosingMessage(message) && !this.policy.GuaranteeDelivery(message.Data);
                         }
                     }
                 }
 
-                var isClosingMessage = message.SequenceId == int.MaxValue;
-
                 // special closing message
-                if (isClosingMessage)
+                if (IsClosingMessage(message))
                 {
                     // queued messages with an originating time past the closing time should be dropped, regardless
                     // of their guaranteed delivery.
                     while (this.queue.Count > 0 && this.queue.Peek().OriginatingTime > message.OriginatingTime)
                     {
                         var item = this.queue.Dequeue(); // discard unprocessed items which occur after the closing message
-                        receiverCollector?.MessageDropped(this.Count, item.Envelope);
+                        receiverDiagnosticsCollector?.MessageDropped(diagnosticsTime);
                         this.cloner.Recycle(item.Data);
                         this.counters?.Increment(ReceiverCounters.Dropped);
                     }
                 }
 
-                // enqueue the new message, if it's the closing one, or if we should not drop
-                if (!dropIncomingMessage || isClosingMessage)
+                // enqueue the new message, unless we've decided it should be dropped
+                if (!dropIncomingMessage)
                 {
                     this.queue.Enqueue(message);
+                }
+                else
+                {
+                    // o/w capture that we have dropped the incoming message
+                    receiverDiagnosticsCollector?.MessageDropped(diagnosticsTime);
                 }
 
                 // Update a bunch of variables that helps with diagnostics and performance measurement.
@@ -249,10 +263,8 @@ namespace Microsoft.Psi.Streams
                 stateTransition = this.UpdateState();
                 stateTransitionAction?.Invoke(stateTransition);
 
-                if (!dropIncomingMessage || isClosingMessage)
-                {
-                    receiverCollector?.MessageEnqueued(this.Count, message.Envelope);
-                }
+                // update diagnostic information about the queue size
+                receiverDiagnosticsCollector?.QueueSizeUpdate(this.queue.Count, diagnosticsTime);
             }
         }
 
@@ -276,8 +288,8 @@ namespace Microsoft.Psi.Streams
 
             // update the local variables.
             this.isEmpty = count == 0;
-            this.isThrottling = this.policy.ThrottleWhenFull && count >= this.policy.MaximumQueueSize;
-            this.nextMessageEnvelope = (count == 0) ? default(Envelope) : this.queue.Peek().Envelope;
+            this.isThrottling = this.policy.ThrottleQueueSize.HasValue && count >= this.policy.ThrottleQueueSize.Value;
+            this.nextMessageEnvelope = (count == 0) ? default : this.queue.Peek().Envelope;
 
             // create the Transition object by comparing the current and previous local state variables.
             return new QueueTransition()

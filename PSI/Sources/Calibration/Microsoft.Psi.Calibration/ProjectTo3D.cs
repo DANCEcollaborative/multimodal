@@ -15,19 +15,20 @@ namespace Microsoft.Psi.Calibration
     /// Inputs are the depth image, list of 2D points from the color image, and the camera calibration.
     /// Outputs the 3D points projected into the depth camera's coordinate system.
     /// </remarks>
-    public sealed class ProjectTo3D : ConsumerProducer<(Shared<Image>, List<Point2D>, IDepthDeviceCalibrationInfo), List<Point3D>>
+    public sealed class ProjectTo3D : ConsumerProducer<(Shared<DepthImage>, List<Point2D>, IDepthDeviceCalibrationInfo), List<Point3D>>
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="ProjectTo3D"/> class.
         /// </summary>
-        /// <param name="pipeline">Pipeline this component is a part of.</param>
-        public ProjectTo3D(Pipeline pipeline)
-            : base(pipeline)
+        /// <param name="pipeline">The pipeline to add the component to.</param>
+        /// <param name="name">An optional name for the component.</param>
+        public ProjectTo3D(Pipeline pipeline, string name = nameof(ProjectTo3D))
+            : base(pipeline, name)
         {
         }
 
         /// <inheritdoc/>
-        protected override void Receive((Shared<Image>, List<Point2D>, IDepthDeviceCalibrationInfo) data, Envelope e)
+        protected override void Receive((Shared<DepthImage>, List<Point2D>, IDepthDeviceCalibrationInfo) data, Envelope e)
         {
             var point2DList = data.Item2;
             var depthImage = data.Item1;
@@ -38,7 +39,7 @@ namespace Microsoft.Psi.Calibration
             {
                 foreach (var point2D in point2DList)
                 {
-                    var result = DepthExtensions.ProjectToCameraSpace(calibration, point2D, depthImage);
+                    var result = CalibrationExtensions.ProjectToCameraSpace(calibration, point2D, depthImage);
                     if (result != null)
                     {
                         point3DList.Add(result.Value);

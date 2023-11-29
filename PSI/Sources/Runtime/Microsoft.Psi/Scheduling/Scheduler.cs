@@ -9,14 +9,17 @@ namespace Microsoft.Psi.Scheduling
     /// <summary>
     /// Maintains a queue of workitems and schedules worker threads to empty them.
     /// </summary>
-    public sealed class Scheduler
+    public sealed class Scheduler : IDisposable
     {
         private readonly string name;
         private readonly SimpleSemaphore threadSemaphore;
         private readonly Func<Exception, bool> errorHandler;
         private readonly bool allowSchedulingOnExternalThreads;
-        private readonly ManualResetEvent stopped = new ManualResetEvent(true);
-        private readonly AutoResetEvent futureAdded = new AutoResetEvent(false);
+        private readonly ManualResetEvent stopped = new (true);
+        private readonly AutoResetEvent futureQueuePulse = new (false);
+        private readonly ThreadLocal<WorkItem?> nextWorkitem = new ();
+        private readonly ThreadLocal<bool> isSchedulerThread = new (() => false);
+        private readonly ThreadLocal<DateTime> currentWorkitemTime = new (() => DateTime.MaxValue);
 
         // the queue of pending workitems, ordered by start time
         private readonly WorkItemQueue globalWorkitems;
@@ -24,11 +27,8 @@ namespace Microsoft.Psi.Scheduling
         private Thread futuresThread;
         private IPerfCounterCollection<SchedulerCounters> counters;
         private bool forcedShutdownRequested;
-        private ThreadLocal<WorkItem?> nextWorkitem = new ThreadLocal<WorkItem?>();
-        private ThreadLocal<bool> isSchedulerThread = new ThreadLocal<bool>(() => false);
-        private ThreadLocal<DateTime> currentWorkitemTime = new ThreadLocal<DateTime>(() => DateTime.MaxValue);
         private Clock clock;
-        private bool delayFutureWorkitemsUntilDue;
+        private bool delayFutureWorkItemsUntilDue;
         private bool started = false;
         private bool completed = false;
 
@@ -52,7 +52,7 @@ namespace Microsoft.Psi.Scheduling
             // set virtual time such that any scheduled item appears to be in the future and gets queued in the future workitem queue
             // the time will change when the scheduler is started, and the future workitem queue will be drained then as appropriate
             this.clock = clock ?? new Clock(DateTime.MinValue, 0);
-            this.delayFutureWorkitemsUntilDue = true;
+            this.delayFutureWorkItemsUntilDue = true;
         }
 
         /// <summary>
@@ -69,12 +69,30 @@ namespace Microsoft.Psi.Scheduling
         /// </summary>
         public Clock Clock => this.clock;
 
+        /// <summary>
+        /// Gets a value indicating whether the scheduler should delay future work items until they're due.
+        /// </summary>
+        internal bool DelayFutureWorkItemsUntilDue => this.delayFutureWorkItemsUntilDue;
+
         internal bool IsStarted
         {
             get
             {
                 return !this.stopped.WaitOne(0);
             }
+        }
+
+        /// <inheritdoc/>
+        public void Dispose()
+        {
+            this.threadSemaphore.Dispose();
+            this.stopped.Dispose();
+            this.futureQueuePulse.Dispose();
+            this.globalWorkitems.Dispose();
+            this.futureWorkitems.Dispose();
+            this.nextWorkitem.Dispose();
+            this.isSchedulerThread.Dispose();
+            this.currentWorkitemTime.Dispose();
         }
 
         /// <summary>
@@ -86,15 +104,30 @@ namespace Microsoft.Psi.Scheduling
         /// <param name="argument">Action argument.</param>
         /// <param name="startTime">Scheduled start time.</param>
         /// <param name="context">The scheduler context on which to execute the action.</param>
+        /// <param name="outputActionTiming">Indicates whether to output action timing information.</param>
+        /// <param name="actionStartTime">The time the runtime started executing the action.</param>
+        /// <param name="actionEndTime">The time the runtime ended executing the action.</param>
         /// <returns>Success flag.</returns>
-        public bool TryExecute<T>(SynchronizationLock synchronizationObject, Action<T> action, T argument, DateTime startTime, SchedulerContext context)
+        public bool TryExecute<T>(
+            SynchronizationLock synchronizationObject,
+            Action<T> action,
+            T argument,
+            DateTime startTime,
+            SchedulerContext context,
+            bool outputActionTiming,
+            out DateTime actionStartTime,
+            out DateTime actionEndTime)
         {
+            actionStartTime = DateTime.MinValue;
+            actionEndTime = DateTime.MinValue;
+
             if (this.forcedShutdownRequested || startTime > context.FinalizeTime)
             {
+                actionStartTime = actionEndTime = this.clock.GetCurrentTime();
                 return true;
             }
 
-            if (startTime > this.clock.GetCurrentTime() && this.delayFutureWorkitemsUntilDue)
+            if (startTime > this.clock.GetCurrentTime() && this.delayFutureWorkItemsUntilDue)
             {
                 return false;
             }
@@ -119,16 +152,26 @@ namespace Microsoft.Psi.Scheduling
                 // running the action. The context will be exited in the finally clause.
                 context.Enter();
 
-                action(argument);
                 this.counters?.Increment(SchedulerCounters.WorkitemsPerSecond);
-
                 this.counters?.Increment(SchedulerCounters.ImmediateWorkitemsPerSecond);
+
+                if (outputActionTiming)
+                {
+                    actionStartTime = this.clock.GetCurrentTime();
+                }
+
+                action(argument);
             }
             catch (Exception e) when (this.errorHandler(e))
             {
             }
             finally
             {
+                if (outputActionTiming)
+                {
+                    actionEndTime = this.clock.GetCurrentTime();
+                }
+
                 synchronizationObject.Release();
                 context.Exit();
             }
@@ -151,7 +194,7 @@ namespace Microsoft.Psi.Scheduling
                 return true;
             }
 
-            if (startTime > this.clock.GetCurrentTime() && this.delayFutureWorkitemsUntilDue)
+            if (startTime > this.clock.GetCurrentTime() && this.delayFutureWorkItemsUntilDue)
             {
                 return false;
             }
@@ -236,7 +279,7 @@ namespace Microsoft.Psi.Scheduling
             }
 
             // if no clock is specified, schedule everything without delay
-            this.delayFutureWorkitemsUntilDue = delayFutureWorkitemsUntilDue;
+            this.delayFutureWorkItemsUntilDue = delayFutureWorkitemsUntilDue;
             this.clock = clock;
             this.started = true;
             this.stopped.Reset();
@@ -260,7 +303,7 @@ namespace Microsoft.Psi.Scheduling
             this.futuresThread.Join();
             this.clock = new Clock(DateTime.MinValue, 0);
             this.completed = true;
-            this.delayFutureWorkitemsUntilDue = true;
+            this.delayFutureWorkItemsUntilDue = true;
         }
 
         /// <summary>
@@ -326,6 +369,10 @@ namespace Microsoft.Psi.Scheduling
                 return;
             }
 
+            // Pulse the future queue to process any work items that are either due or
+            // non-reachable due to having a start time past the finalization time.
+            this.futureQueuePulse.Set();
+
             if (!this.isSchedulerThread.Value && !this.allowSchedulingOnExternalThreads)
             {
                 // this is not a scheduler thread, so just wait for the context to empty and return
@@ -379,17 +426,21 @@ namespace Microsoft.Psi.Scheduling
         /// <param name="asContinuation">Flag whether to execute once current operation completes.</param>
         private void Schedule(WorkItem wi, bool asContinuation = true)
         {
+            // Exit the context without executing the work item if:
+            // (1) a forced shutdown has been initiated
+            // (2) the scheduler has already been stopped (completed)
             if (this.forcedShutdownRequested || this.completed)
             {
                 wi.SchedulerContext.Exit();
                 return;
             }
 
-            // if the workitem not yet due, add it to the future workitem queue
-            if ((wi.StartTime > wi.SchedulerContext.Clock.GetCurrentTime() && this.delayFutureWorkitemsUntilDue) || !this.started || !wi.SchedulerContext.Started)
+            // if the work item is not yet due, add it to the future work item queue, as long as it is not after the finalize time
+            if ((wi.StartTime > wi.SchedulerContext.Clock.GetCurrentTime() && wi.StartTime <= wi.SchedulerContext.FinalizeTime && this.delayFutureWorkItemsUntilDue) ||
+                !this.started || !wi.SchedulerContext.Started)
             {
                 this.futureWorkitems.Enqueue(wi);
-                this.futureAdded.Set();
+                this.futureQueuePulse.Set();
                 return;
             }
 
@@ -544,7 +595,7 @@ namespace Microsoft.Psi.Scheduling
         {
             int waitTimeout = -1;
 
-            var workReadyHandles = new EventWaitHandle[] { this.stopped, this.futureAdded };
+            var workReadyHandles = new EventWaitHandle[] { this.stopped, this.futureQueuePulse };
             var allHandles = new[] { this.threadSemaphore.Empty, this.globalWorkitems.Empty, this.futureWorkitems.Empty };
             var spinWait = default(SpinWait);
             while (true)
@@ -584,7 +635,7 @@ namespace Microsoft.Psi.Scheduling
                 if (this.futureWorkitems.TryPeek(out wi))
                 {
                     // the result could be a negative value if some other thread captured "now" before us and added the item to the future queue after the while loop above exited
-                    waitTimeout = (int)this.clock.ToRealTime(wi.StartTime - this.clock.GetCurrentTime()).TotalMilliseconds;
+                    waitTimeout = this.delayFutureWorkItemsUntilDue ? (int)this.clock.ToRealTime(wi.StartTime - this.clock.GetCurrentTime()).TotalMilliseconds : 0;
                     if (waitTimeout < 0)
                     {
                         waitTimeout = 0;

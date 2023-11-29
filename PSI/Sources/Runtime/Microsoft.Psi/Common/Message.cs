@@ -92,11 +92,11 @@ namespace Microsoft.Psi
         }
 
         /// <summary>
-        /// Gets the time when the message was posted.
+        /// Gets the time when the message was created and posted.
         /// </summary>
-        public DateTime Time
+        public DateTime CreationTime
         {
-            get { return this.envelope.Time; }
+            get { return this.envelope.CreationTime; }
         }
 
         /// <summary>

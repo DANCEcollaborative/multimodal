@@ -24,10 +24,14 @@ namespace Microsoft.Psi.Serialization
             : base(contractName, id)
         {
             this.innerSerializer = innerSerializer;
+            if (innerSerializer != null && innerSerializer.IsClearRequired.HasValue)
+            {
+                this.IsClearRequired = innerSerializer.IsClearRequired.Value;
+            }
 
             if (typeof(T).IsByRef)
             {
-                throw new InvalidOperationException("Cannot use a valut type handler with a class serializer");
+                throw new InvalidOperationException("Cannot use a value type handler with a class serializer");
             }
         }
 

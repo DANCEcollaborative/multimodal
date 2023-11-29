@@ -18,16 +18,17 @@ namespace Microsoft.Psi
     /// </summary>
     /// <typeparam name="T">The type of messages in the stream.</typeparam>
     [Serializer(typeof(Emitter<>.NonSerializer))]
-    public class Emitter<T> : IEmitter, IProducer<T>
+    public sealed class Emitter<T> : IEmitter, IProducer<T>
     {
         private readonly object owner;
         private readonly Pipeline pipeline;
         private readonly int id;
-        private readonly List<ClosedHandler> closedHandlers = new List<ClosedHandler>();
+        private readonly List<ClosedHandler> closedHandlers = new ();
         private readonly ValidateMessageHandler messageValidator;
+        private readonly object receiversLock = new ();
+        private readonly SynchronizationLock syncContext;
         private string name;
         private int nextSeqId;
-        private SynchronizationLock syncContext;
         private Envelope lastEnvelope;
         private volatile Receiver<T>[] receivers = new Receiver<T>[0];
         private IPerfCounterCollection<EmitterCounters> counters;
@@ -127,9 +128,12 @@ namespace Microsoft.Psi
             {
                 var e = this.CreateEnvelope(originatingTime);
                 e.SequenceId = int.MaxValue; // special "closing" ID
-                this.Deliver(new Message<T>(default(T), e));
+                this.Deliver(new Message<T>(default, e));
 
-                this.receivers = new Receiver<T>[0];
+                lock (this.receiversLock)
+                {
+                    this.receivers = new Receiver<T>[0];
+                }
 
                 foreach (var handler in this.closedHandlers)
                 {
@@ -197,7 +201,7 @@ namespace Microsoft.Psi
         {
             receiver.OnSubscribe(this, allowSubscribeWhileRunning, deliveryPolicy);
 
-            lock (this.receivers)
+            lock (this.receiversLock)
             {
                 var newSet = this.receivers.Concat(new[] { receiver }).ToArray();
                 this.receivers = newSet;
@@ -206,7 +210,7 @@ namespace Microsoft.Psi
 
         internal void Unsubscribe(Receiver<T> receiver)
         {
-            lock (this.receivers)
+            lock (this.receiversLock)
             {
                 var newSet = this.receivers.Except(new[] { receiver }).ToArray();
                 this.receivers = newSet;
@@ -231,12 +235,30 @@ namespace Microsoft.Psi
             // make sure the data is consistent
             if (e.SequenceId <= this.lastEnvelope.SequenceId)
             {
-                throw new InvalidOperationException($"Attempted to post a message with a sequence ID that is out of order: {this.Name}\nThis may be caused by simultaneous calls to Emitter.Post() from multiple threads.");
+                throw new InvalidOperationException(
+                    $"Attempted to post a message with a sequence ID that is out of order.\n" +
+                    $"This may be caused by simultaneous calls to Emitter.Post() from multiple threads.\n" +
+                    $"Emitter: {this.Name}\n" +
+                    $"Current message sequence ID: {e.SequenceId}\n" +
+                    $"Previous message sequence ID: {this.lastEnvelope.SequenceId}\n");
             }
 
-            if (e.OriginatingTime <= this.lastEnvelope.OriginatingTime || e.Time < this.lastEnvelope.Time)
+            if (e.OriginatingTime <= this.lastEnvelope.OriginatingTime)
             {
-                throw new InvalidOperationException($"Attempted to post a message without strictly increasing originating time or that is out of order in wall-clock time: {this.Name}");
+                throw new InvalidOperationException(
+                    $"Attempted to post a message without strictly increasing originating times.\n" +
+                    $"Emitter: {this.Name}\n" +
+                    $"Current message originating time: {e.OriginatingTime.TimeOfDay}\n" +
+                    $"Previous message originating time: {this.lastEnvelope.OriginatingTime.TimeOfDay}\n");
+            }
+
+            if (e.CreationTime < this.lastEnvelope.CreationTime)
+            {
+                throw new InvalidOperationException(
+                    $"Attempted to post a message that is out of order in wall-clock time.\n" +
+                    $"Emitter: {this.Name}\n" +
+                    $"Current message creation time: {e.CreationTime.TimeOfDay}\n" +
+                    $"Previous message creation time: {this.lastEnvelope.CreationTime.TimeOfDay}\n");
             }
 
             // additional message validation checks
@@ -261,7 +283,7 @@ namespace Microsoft.Psi
             if (this.counters != null)
             {
                 this.counters.Increment(EmitterCounters.MessageCount);
-                this.counters.RawValue(EmitterCounters.MessageLatency, (msg.Time - msg.OriginatingTime).Ticks / 10);
+                this.counters.RawValue(EmitterCounters.MessageLatency, (msg.CreationTime - msg.OriginatingTime).Ticks / 10);
             }
 
             // capture the "receivers" member to avoid locking

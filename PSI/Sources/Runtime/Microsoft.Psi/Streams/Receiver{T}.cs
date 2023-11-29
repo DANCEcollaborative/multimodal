@@ -24,7 +24,7 @@ namespace Microsoft.Psi
     /// </remarks>
     /// <typeparam name="T">The type of messages that can be received.</typeparam>
     [Serializer(typeof(Receiver<>.NonSerializer))]
-    public class Receiver<T> : IReceiver, IConsumer<T>
+    public sealed class Receiver<T> : IReceiver, IConsumer<T>
     {
         private readonly Action<Message<T>> onReceived;
         private readonly PipelineElement element;
@@ -41,7 +41,28 @@ namespace Microsoft.Psi
         private IPerfCounterCollection<ReceiverCounters> counters;
         private Func<T, int> computeDataSize = null;
 
-        internal Receiver(int id, string name, PipelineElement element, object owner, Action<Message<T>> onReceived, SynchronizationLock context, Pipeline pipeline, bool enforceIsolation = false)
+        /// <summary>
+        /// Initializes a new instance of the <see cref="Receiver{T}"/> class.
+        /// </summary>
+        /// <param name="id">The unique receiver id.</param>
+        /// <param name="name">The debug name of the receiver.</param>
+        /// <param name="element">The pipeline element associated with the receiver.</param>
+        /// <param name="owner">The component that owns this receiver.</param>
+        /// <param name="onReceived">The action to execute when a message is delivered to the receiver.</param>
+        /// <param name="context">The synchronization context of the receiver.</param>
+        /// <param name="pipeline">The pipeline in which to create the receiver.</param>
+        /// <param name="enforceIsolation">A value indicating whether to enforce cloning of messages as they arrive at the receiver.</param>
+        /// <remarks>
+        /// The <paramref name="enforceIsolation"/> flag primarily affects synchronous delivery of messages, when the action is
+        /// executed on the same thread on which the message was posted. If this value is set to true, the runtime will enforce
+        /// isolation by cloning the message before passing it to the receiver action. If set to false, then the message will be
+        /// passed by reference to the action without cloning, if and only if the receiver action executes synchronously. This
+        /// should be used with caution, as any modifications that the action may make to the received message will be reflected
+        /// in the source message posted by the upstream component. When in doubt, keep this value set to true to ensure that
+        /// messages are always cloned. Regardless of the value set here, isolation is always enforced when messages are queued
+        /// and delivered asynchronously.
+        /// </remarks>
+        internal Receiver(int id, string name, PipelineElement element, object owner, Action<Message<T>> onReceived, SynchronizationLock context, Pipeline pipeline, bool enforceIsolation = true)
         {
             this.scheduler = pipeline.Scheduler;
             this.schedulerContext = pipeline.SchedulerContext;
@@ -217,19 +238,28 @@ namespace Microsoft.Psi
 
         internal void Receive(Message<T> message)
         {
+            var hasDiagnosticsCollector = this.receiverDiagnosticsCollector.Value != null;
+            var diagnosticsTime = DateTime.MinValue;
+
+            if (hasDiagnosticsCollector)
+            {
+                diagnosticsTime = this.pipeline.GetCurrentTime();
+                this.receiverDiagnosticsCollector.Value.MessageEmitted(message.Envelope, diagnosticsTime);
+            }
+
             if (this.counters != null)
             {
-                var messageTimeReal = this.scheduler.Clock.ToRealTime(message.Time);
+                var messageTimeReal = this.scheduler.Clock.ToRealTime(message.CreationTime);
                 var messageOriginatingTimeReal = this.scheduler.Clock.ToRealTime(message.OriginatingTime);
                 this.counters.Increment(ReceiverCounters.Total);
                 this.counters.RawValue(ReceiverCounters.IngestTime, (Time.GetCurrentTime() - messageTimeReal).Ticks / 10);
-                this.counters.RawValue(ReceiverCounters.PipelineExclusiveDelay, (message.Time - messageOriginatingTimeReal).Ticks / 10);
+                this.counters.RawValue(ReceiverCounters.PipelineExclusiveDelay, (message.CreationTime - messageOriginatingTimeReal).Ticks / 10);
                 this.counters.RawValue(ReceiverCounters.OutstandingUnrecycled, this.Recycler.OutstandingAllocationCount);
                 this.counters.RawValue(ReceiverCounters.AvailableRecycled, this.Recycler.AvailableAllocationCount);
             }
 
-            // First, only clone the message if the component requires isolation, to allow for clone-free operation on the fast path
-            // Optimization is release-only, to make sure the cloning path is exercised in tests
+            // First, only clone the message if the component requires isolation, to allow for clone-free
+            // operation on the synchronous execution path if enforceIsolation is set to false.
             if (this.enforceIsolation)
             {
                 message.Data = message.Data.DeepClone(this.Recycler);
@@ -241,14 +271,36 @@ namespace Microsoft.Psi
                 // however, if this thread already has a lock on the owner it means some other receiver is in our call stack (we have a delivery loop),
                 // so bail out because executing the delegate would break the exclusive execution promise of the receivers
                 // An existing lock can also indicate that a downstream component wants us to slow down (throttle)
-                bool delivered = this.scheduler.TryExecute(this.syncContext, this.onReceived, message, message.OriginatingTime, this.schedulerContext);
+                bool delivered = this.scheduler.TryExecute(
+                    this.syncContext,
+                    this.onReceived,
+                    message,
+                    message.OriginatingTime,
+                    this.schedulerContext,
+                    hasDiagnosticsCollector,
+                    out var receiverStartTime,
+                    out var receiverEndTime);
+
                 if (delivered)
                 {
-                    this.receiverDiagnosticsCollector.Value?.MessageProcessedSynchronously(
-                        this.pipeline,
-                        this.awaitingDelivery.Count,
-                        message.Envelope,
-                        this.pipeline.DiagnosticsConfiguration.TrackMessageSize ? this.ComputeDataSize(message.Data) : 0);
+                    if (this.receiverDiagnosticsCollector.Value != null)
+                    {
+                        this.receiverDiagnosticsCollector.Value.MessageProcessed(
+                            message.Envelope,
+                            receiverStartTime,
+                            receiverEndTime,
+                            this.pipeline.DiagnosticsConfiguration.TrackMessageSize ? this.ComputeDataSize(message.Data) : 0,
+                            diagnosticsTime);
+
+                        this.receiverDiagnosticsCollector.Value.UpdateDiagnosticState(this.Owner.ToString());
+                    }
+
+                    if (this.enforceIsolation)
+                    {
+                        // recycle the cloned copy if synchronous execution succeeded
+                        this.Recycler.Recycle(message.Data);
+                    }
+
                     return;
                 }
             }
@@ -260,7 +312,7 @@ namespace Microsoft.Psi
                 message.Data = message.Data.DeepClone(this.Recycler);
             }
 
-            this.awaitingDelivery.Enqueue(message, out QueueTransition stateTransition, this.receiverDiagnosticsCollector.Value, this.StartThrottling);
+            this.awaitingDelivery.Enqueue(message, this.receiverDiagnosticsCollector.Value, diagnosticsTime, this.StartThrottling, out QueueTransition stateTransition);
 
             // if the queue was empty or if the next message is a closing message, we need to schedule delivery
             if (stateTransition.ToNotEmpty || stateTransition.ToClosing)
@@ -272,7 +324,9 @@ namespace Microsoft.Psi
 
         internal void DeliverNext()
         {
-            if (this.awaitingDelivery.TryDequeue(out Message<T> message, out QueueTransition stateTransition, this.scheduler.Clock.GetCurrentTime(), this.receiverDiagnosticsCollector.Value, this.StopThrottling))
+            var currentTime = this.scheduler.Clock.GetCurrentTime();
+
+            if (this.awaitingDelivery.TryDequeue(out Message<T> message, out QueueTransition stateTransition, currentTime, this.receiverDiagnosticsCollector.Value, this.StopThrottling))
             {
                 if (message.SequenceId == int.MaxValue)
                 {
@@ -281,26 +335,32 @@ namespace Microsoft.Psi
                     return;
                 }
 
-                // remember the object we dequeued, and make a clone if the component requests isolation (the component will have to recycle this clone when done)
-                var data = message.Data;
-                if (this.enforceIsolation)
-                {
-                    message.Data = message.Data.DeepClone(this.Recycler);
-                }
+                DateTime start = (this.counters != null) ? Time.GetCurrentTime() : default;
 
-                DateTime start = (this.counters != null) ? Time.GetCurrentTime() : default(DateTime);
-                var processStartTime = this.receiverDiagnosticsCollector.Value?.MessageProcessStart(
-                    this.pipeline,
-                    this.awaitingDelivery.Count,
-                    message.Envelope,
-                    this.pipeline.DiagnosticsConfiguration.TrackMessageSize ? this.ComputeDataSize(message.Data) : 0);
-                this.onReceived(message);
-                this.receiverDiagnosticsCollector.Value?.MessageProcessComplete(this.pipeline, processStartTime.Value);
+                if (this.receiverDiagnosticsCollector.Value == null)
+                {
+                    this.onReceived(message);
+                }
+                else
+                {
+                    var receiverStartTime = this.pipeline.GetCurrentTime();
+                    this.onReceived(message);
+                    var receiverEndTime = this.pipeline.GetCurrentTime();
+
+                    this.receiverDiagnosticsCollector.Value.MessageProcessed(
+                        message.Envelope,
+                        receiverStartTime,
+                        receiverEndTime,
+                        this.pipeline.DiagnosticsConfiguration.TrackMessageSize ? this.ComputeDataSize(message.Data) : 0,
+                        currentTime);
+
+                    this.receiverDiagnosticsCollector.Value.UpdateDiagnosticState(this.Owner.ToString());
+                }
 
                 if (this.counters != null)
                 {
                     var end = Time.GetCurrentTime();
-                    var messageTimeReal = this.scheduler.Clock.ToRealTime(message.Time);
+                    var messageTimeReal = this.scheduler.Clock.ToRealTime(message.CreationTime);
                     var messageOriginatingTimeReal = this.scheduler.Clock.ToRealTime(message.OriginatingTime);
                     this.counters.RawValue(ReceiverCounters.TimeInQueue, (start - messageTimeReal).Ticks / 10);
                     this.counters.RawValue(ReceiverCounters.ProcessingTime, (end - start).Ticks / 10);
@@ -310,7 +370,7 @@ namespace Microsoft.Psi
                 }
 
                 // recycle the item we dequeued
-                this.Recycler.Recycle(data);
+                this.Recycler.Recycle(message.Data);
 
                 if (!stateTransition.ToEmpty)
                 {

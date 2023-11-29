@@ -17,28 +17,56 @@ namespace Microsoft.Psi.Media
     /// </summary>
     public class MediaSource : Generator, IDisposable
     {
+        private readonly Stream input;
+        private readonly DateTime start;
+        private readonly bool dropOutOfOrderPackets = false;
+
         private bool disposed = false;
-        private string filename;
         private short videoWidth;
         private short videoHeight;
         private SourceReader sourceReader;
-        private DateTime start;
         private int imageStreamIndex = -1;
         private int audioStreamIndex = -1;
         private WaveFormat waveFormat;
 
         /// <summary>
+        /// Keep track of the timestamp of the last image frame (computed from the value reported to us by media foundation).
+        /// </summary>
+        private DateTime lastPostedImageTime = DateTime.MinValue;
+
+        /// <summary>
+        /// Keep track of the timestamp of the last audio buffer (computed from the value reported to us by media foundation).
+        /// </summary>
+        private DateTime lastPostedAudioTime = DateTime.MinValue;
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="MediaSource"/> class.
         /// </summary>
-        /// <param name="pipeline">Pipeline this component is a part of.</param>
+        /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="filename">Name of media file to play.</param>
-        public MediaSource(Pipeline pipeline, string filename)
-            : base(pipeline)
+        /// <param name="dropOutOfOrderPackets">Optional flag specifying whether to drop out of order packets (defaults to <c>false</c>).</param>
+        /// <param name="name">An optional name for the stream operator.</param>
+        public MediaSource(Pipeline pipeline, string filename, bool dropOutOfOrderPackets = false, string name = nameof(MediaSource))
+            : this(pipeline, File.OpenRead(filename), new FileInfo(filename).CreationTime, dropOutOfOrderPackets, name)
         {
-            FileInfo info = new FileInfo(filename);
-            pipeline.ProposeReplayTime(new TimeInterval(info.CreationTime, DateTime.MaxValue));
-            this.start = info.CreationTime;
-            this.filename = filename;
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="MediaSource"/> class.
+        /// </summary>
+        /// <param name="pipeline">The pipeline to add the component to.</param>
+        /// <param name="input">Source stream of the media to consume.</param>
+        /// <param name="startTime">Optional date/time that the media started.</param>
+        /// <param name="dropOutOfOrderPackets">Optional flag specifying whether to drop out of order packets (defaults to <c>false</c>).</param>
+        /// <param name="name">An optional name for the component.</param>
+        public MediaSource(Pipeline pipeline, Stream input, DateTime? startTime = null, bool dropOutOfOrderPackets = false, string name = nameof(MediaSource))
+            : base(pipeline, name: name)
+        {
+            var proposedReplayTime = startTime ?? DateTime.UtcNow;
+            pipeline.ProposeReplayTime(new TimeInterval(proposedReplayTime, DateTime.MaxValue));
+            this.start = proposedReplayTime;
+            this.input = input;
+            this.dropOutOfOrderPackets = dropOutOfOrderPackets;
             this.Image = pipeline.CreateEmitter<Shared<Image>>(this, nameof(this.Image));
             this.Audio = pipeline.CreateEmitter<AudioBuffer>(this, nameof(this.Audio));
             this.InitializeMediaPipeline();
@@ -61,7 +89,8 @@ namespace Microsoft.Psi.Media
         {
             if (!this.disposed)
             {
-                this.sourceReader.Dispose();
+                this.sourceReader?.Dispose();
+                this.input?.Dispose();
                 MediaManager.Shutdown();
                 this.disposed = true;
             }
@@ -74,32 +103,53 @@ namespace Microsoft.Psi.Media
         /// <returns>The originating time at which to capture the next sample.</returns>
         protected override DateTime GenerateNext(DateTime currentTime)
         {
-            DateTime originatingTime = default(DateTime);
-            int streamIndex = 0;
-            SourceReaderFlags flags = SourceReaderFlags.None;
-            long timestamp = 0;
-            Sample sample = this.sourceReader.ReadSample(SourceReaderIndex.AnyStream, 0, out streamIndex, out flags, out timestamp);
+            DateTime originatingTime = default;
+            var sample = this.sourceReader.ReadSample(SourceReaderIndex.AnyStream, 0, out int streamIndex, out SourceReaderFlags flags, out long timestamp);
             if (sample != null)
             {
                 originatingTime = this.start + TimeSpan.FromTicks(timestamp);
-                MediaBuffer buffer = sample.ConvertToContiguousBuffer();
-                int currentByteCount = 0;
-                int maxByteCount = 0;
-                IntPtr data = buffer.Lock(out maxByteCount, out currentByteCount);
+                var buffer = sample.ConvertToContiguousBuffer();
+                var data = buffer.Lock(out _, out int currentByteCount);
 
                 if (streamIndex == this.imageStreamIndex)
                 {
-                    using (var sharedImage = ImagePool.GetOrCreate(this.videoWidth, this.videoHeight, Imaging.PixelFormat.BGR_24bpp))
+                    // Detect out of order originating times
+                    if (originatingTime > this.lastPostedImageTime)
                     {
+                        using var sharedImage = ImagePool.GetOrCreate(this.videoWidth, this.videoHeight, Imaging.PixelFormat.BGR_24bpp);
                         sharedImage.Resource.CopyFrom(data);
                         this.Image.Post(sharedImage, originatingTime);
+                        this.lastPostedImageTime = originatingTime;
+                    }
+                    else if (!this.dropOutOfOrderPackets)
+                    {
+                        throw new InvalidOperationException(
+                            $"The most recently captured image frame has a timestamp ({originatingTime.TimeOfDay}) which is before " +
+                            $"that of the last posted image frame ({this.lastPostedImageTime.TimeOfDay}), as reported by the video stream. This could " +
+                            $"be due to a timing glitch in the video stream. Set the 'dropOutOfOrderPackets' " +
+                            $"parameter to true to handle this condition by dropping " +
+                            $"packets with out of order timestamps.");
                     }
                 }
                 else if (streamIndex == this.audioStreamIndex)
                 {
-                    AudioBuffer audioBuffer = new AudioBuffer(currentByteCount, this.waveFormat);
-                    Marshal.Copy(data, audioBuffer.Data, 0, currentByteCount);
-                    this.Audio.Post(audioBuffer, originatingTime);
+                    // Detect out of order originating times
+                    if (originatingTime > this.lastPostedAudioTime)
+                    {
+                        var audioBuffer = new AudioBuffer(currentByteCount, this.waveFormat);
+                        Marshal.Copy(data, audioBuffer.Data, 0, currentByteCount);
+                        this.Audio.Post(audioBuffer, originatingTime);
+                        this.lastPostedAudioTime = originatingTime;
+                    }
+                    else if (!this.dropOutOfOrderPackets)
+                    {
+                        throw new InvalidOperationException(
+                            $"The most recently captured audio buffer has a timestamp ({originatingTime.TimeOfDay}) which is before " +
+                            $"that of the last posted audio buffer ({this.lastPostedAudioTime.TimeOfDay}), as reported by the audio stream. This could " +
+                            $"be due to a timing glitch in the audio stream. Set the 'dropOutOfOrderPackets' " +
+                            $"parameter to true to handle this condition by dropping " +
+                            $"packets with out of order timestamps.");
+                    }
                 }
 
                 buffer.Unlock();
@@ -127,9 +177,9 @@ namespace Microsoft.Psi.Media
         private void InitializeMediaPipeline()
         {
             MediaManager.Startup(false);
-            MediaAttributes sourceReaderAttributes = new MediaAttributes();
+            var sourceReaderAttributes = new MediaAttributes();
             sourceReaderAttributes.Set(SourceReaderAttributeKeys.EnableAdvancedVideoProcessing, true);
-            this.sourceReader = new SourceReader(this.filename, sourceReaderAttributes);
+            this.sourceReader = new SourceReader(this.input, sourceReaderAttributes);
             this.sourceReader.SetStreamSelection(SourceReaderIndex.AllStreams, false);
 
             int streamIndex = 0;

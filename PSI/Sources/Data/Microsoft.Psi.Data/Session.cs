@@ -6,13 +6,10 @@ namespace Microsoft.Psi.Data
     using System;
     using System.Collections.Generic;
     using System.Collections.ObjectModel;
-    using System.IO;
     using System.Linq;
     using System.Runtime.Serialization;
     using System.Threading;
     using System.Threading.Tasks;
-    using Microsoft.Psi.Data.Annotations;
-    using Microsoft.Psi.Persistence;
     using Newtonsoft.Json;
 
     /// <summary>
@@ -33,7 +30,7 @@ namespace Microsoft.Psi.Data
         /// </summary>
         /// <param name="dataset">The dataset that this session belongs to.</param>
         /// <param name="name">The session name.</param>
-        internal Session(Dataset dataset, string name = Session.DefaultName)
+        internal Session(Dataset dataset, string name = null)
         {
             this.Dataset = dataset ?? throw new ArgumentNullException(nameof(dataset));
             this.Name = name;
@@ -44,6 +41,11 @@ namespace Microsoft.Psi.Data
         private Session()
         {
         }
+
+        /// <summary>
+        /// Event invoked when the structure of the session changed.
+        /// </summary>
+        public event EventHandler SessionChanged;
 
         /// <summary>
         /// Gets the dataset that this session belongs to.
@@ -67,18 +69,55 @@ namespace Microsoft.Psi.Data
                 }
 
                 this.name = value;
+                this.OnSessionChanged();
             }
         }
 
         /// <summary>
-        /// Gets the orginating time interval (earliest to latest) of the messages in this session.
+        /// Gets the originating time interval (earliest to latest) of the messages in this session.
         /// </summary>
         [IgnoreDataMember]
-        public TimeInterval OriginatingTimeInterval =>
+        public TimeInterval MessageOriginatingTimeInterval =>
             TimeInterval.Coverage(
                 this.InternalPartitions
-                    .Where(p => p.OriginatingTimeInterval.Left > DateTime.MinValue && p.OriginatingTimeInterval.Right < DateTime.MaxValue)
-                    .Select(p => p.OriginatingTimeInterval));
+                    .Where(p => p.MessageOriginatingTimeInterval.Left > DateTime.MinValue && p.MessageOriginatingTimeInterval.Right < DateTime.MaxValue)
+                    .Select(p => p.MessageOriginatingTimeInterval));
+
+        /// <summary>
+        /// Gets the creation time interval (earliest to latest) of the messages in this session.
+        /// </summary>
+        [IgnoreDataMember]
+        public TimeInterval MessageCreationTimeInterval =>
+            TimeInterval.Coverage(
+                this.InternalPartitions
+                    .Where(p => p.MessageCreationTimeInterval.Left > DateTime.MinValue && p.MessageCreationTimeInterval.Right < DateTime.MaxValue)
+                    .Select(p => p.MessageCreationTimeInterval));
+
+        /// <summary>
+        /// Gets the stream open-close time interval in this session.
+        /// </summary>
+        [IgnoreDataMember]
+        public TimeInterval TimeInterval =>
+            TimeInterval.Coverage(
+                this.InternalPartitions
+                    .Where(p => p.TimeInterval.Left > DateTime.MinValue && p.TimeInterval.Right < DateTime.MaxValue)
+                    .Select(p => p.TimeInterval));
+
+        /// <summary>
+        /// Gets the session duration.
+        /// </summary>
+        [IgnoreDataMember]
+        public TimeSpan Duration => this.TimeInterval.Span;
+
+        /// <summary>
+        /// Gets the size of the session, in bytes.
+        /// </summary>
+        public long? Size => this.InternalPartitions.Sum(p => p.Size);
+
+        /// <summary>
+        /// Gets the number of streams in the session.
+        /// </summary>
+        public long? StreamCount => this.InternalPartitions.Sum(p => p.StreamCount);
 
         /// <summary>
         /// Gets the collection of partitions in this session.
@@ -90,73 +129,144 @@ namespace Microsoft.Psi.Data
         private List<IPartition> InternalPartitions { get; set; }
 
         /// <summary>
-        /// Creates and adds an annotation partition from an existing annotation store.
+        /// Gets the partition specified by a name.
         /// </summary>
-        /// <param name="storeName">The name of the annotation store.</param>
-        /// <param name="storePath">The path of the annotation store.</param>
-        /// <param name="partitionName">The partition name. Default is null.</param>
-        /// <returns>The newly added annotation partition.</returns>
-        public AnnotationPartition AddAnnotationPartition(string storeName, string storePath, string partitionName = null)
-        {
-            var partition = AnnotationPartition.CreateFromExistingStore(this, storeName, storePath, partitionName);
-            this.AddPartition(partition);
-            return partition;
-        }
+        /// <param name="partitionName">The name of the partition.</param>
+        /// <returns>The partition with the specified name.</returns>
+        public IPartition this[string partitionName] => this.InternalPartitions.FirstOrDefault(p => p.Name == partitionName);
 
         /// <summary>
         /// Creates and adds a data partition from an existing data store.
         /// </summary>
-        /// <param name="storeName">The name of the data store.</param>
-        /// <param name="storePath">The path of the data store.</param>
-        /// <param name="partitionName">The partition name. Default is null.</param>
+        /// <typeparam name="TStreamReader">Type of IStreamReader used to read data store.</typeparam>
+        /// <param name="streamReader">The stream reader of the data store.</param>
+        /// <param name="partitionName">The partition name. Default is stream reader name.</param>
         /// <returns>The newly added data partition.</returns>
-        public StorePartition AddStorePartition(string storeName, string storePath, string partitionName = null)
+        public Partition<TStreamReader> AddStorePartition<TStreamReader>(TStreamReader streamReader, string partitionName = null)
+            where TStreamReader : IStreamReader
         {
-            var partition = StorePartition.CreateFromExistingStore(this, storeName, storePath, partitionName);
+            var partition = new Partition<TStreamReader>(this, streamReader, partitionName);
             this.AddPartition(partition);
             return partition;
         }
 
         /// <summary>
-        /// Creates and adds an new annotation partition.
+        /// Asynchronously computes a derived partition for this session.
         /// </summary>
-        /// <param name="storeName">The name of the annotation store.</param>
-        /// <param name="storePath">The path of the annotation store.</param>
-        /// <param name="definition">The annotated event definition to use when creating new annoted events in the newly created annotation partition.</param>
-        /// <param name="partitionName">The partition name. Default is null.</param>
-        /// <returns>The newly added annotation partition.</returns>
-        public AnnotationPartition CreateAnnotationPartition(string storeName, string storePath, AnnotatedEventDefinition definition, string partitionName = null)
+        /// <param name="computeDerived">The action to be invoked to compute derive partitions.</param>
+        /// <param name="outputPartitionName">The name of the output partition to be created.</param>
+        /// <param name="overwrite">An optional flag indicating whether the partition should be overwritten. Default is false.</param>
+        /// <param name="outputStoreName">An optional name for the output data store. Default is the output partition name.</param>
+        /// <param name="outputStorePath">An optional path for the output data store. Default is the same path at the first partition in the session.</param>
+        /// <param name="replayDescriptor">An optional replay descriptor to use when creating the derived partition.</param>
+        /// <param name="deliveryPolicy">Pipeline-level delivery policy to use when creating the derived partition.</param>
+        /// <param name="enableDiagnostics">Indicates whether to enable collecting and publishing diagnostics information on the Pipeline.Diagnostics stream.</param>
+        /// <param name="progress">An optional progress object to be used for reporting progress.</param>
+        /// <param name="cancellationToken">An optional token for canceling the asynchronous task.</param>
+        /// <returns>A task that represents the asynchronous compute derive partition operation.</returns>
+        public async Task CreateDerivedPartitionAsync(
+            Action<Pipeline, SessionImporter, Exporter> computeDerived,
+            string outputPartitionName,
+            bool overwrite = false,
+            string outputStoreName = null,
+            string outputStorePath = null,
+            ReplayDescriptor replayDescriptor = null,
+            DeliveryPolicy deliveryPolicy = null,
+            bool enableDiagnostics = false,
+            IProgress<(string, double)> progress = null,
+            CancellationToken cancellationToken = default)
         {
-            var partition = AnnotationPartition.Create(this, storeName, storePath, definition, partitionName);
-            this.AddPartition(partition);
-            return partition;
+            await this.CreateDerivedPartitionAsync<long>(
+                (p, si, e, _) => computeDerived(p, si, e),
+                0,
+                outputPartitionName,
+                overwrite,
+                outputStoreName,
+                outputStorePath,
+                replayDescriptor,
+                deliveryPolicy,
+                enableDiagnostics,
+                progress,
+                cancellationToken);
+        }
+
+        /// <summary>
+        /// Asynchronously computes a derived partition for this session.
+        /// </summary>
+        /// <typeparam name="TParameter">The type of parameter passed to the action.</typeparam>
+        /// <param name="computeDerived">The action to be invoked to derive partitions.</param>
+        /// <param name="parameter">The parameter to be passed to the action.</param>
+        /// <param name="outputPartitionName">The name of the output partition to be created.</param>
+        /// <param name="overwrite">An optional flag indicating whether the partition should be overwritten. Default is false.</param>
+        /// <param name="outputStoreName">An optional name for the output data store. Default is the output partition name.</param>
+        /// <param name="outputStorePath">An optional path for the output data store. Default is the same path at the first partition in the session.</param>
+        /// <param name="replayDescriptor">An optional replay descriptor to use when creating the derived partition.</param>
+        /// <param name="deliveryPolicy">Pipeline-level delivery policy to use when creating the derived partition.</param>
+        /// <param name="enableDiagnostics">Indicates whether to enable collecting and publishing diagnostics information on the Pipeline.Diagnostics stream.</param>
+        /// <param name="progress">An optional progress object to be used for reporting progress.</param>
+        /// <param name="cancellationToken">An optional token for canceling the asynchronous task.</param>
+        /// <returns>A task that represents the asynchronous compute derive partition operation.</returns>
+        public async Task CreateDerivedPartitionAsync<TParameter>(
+            Action<Pipeline, SessionImporter, Exporter, TParameter> computeDerived,
+            TParameter parameter,
+            string outputPartitionName,
+            bool overwrite,
+            string outputStoreName,
+            string outputStorePath,
+            ReplayDescriptor replayDescriptor = null,
+            DeliveryPolicy deliveryPolicy = null,
+            bool enableDiagnostics = false,
+            IProgress<(string, double)> progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            await this.CreateDerivedPsiPartitionAsync(
+                computeDerived,
+                parameter,
+                outputPartitionName,
+                overwrite,
+                outputStoreName ?? outputPartitionName,
+                outputStorePath ?? this.Partitions.First().StorePath,
+                replayDescriptor,
+                deliveryPolicy,
+                enableDiagnostics,
+                progress,
+                cancellationToken);
         }
 
         /// <summary>
         /// Asynchronously computes a derived partition for the session.
         /// </summary>
-        /// <typeparam name="TParameter">The type of paramater passed to the action.</typeparam>
-        /// <param name="computeDerived">The action to be invoked to derive partitions.</param>
+        /// <typeparam name="TParameter">The type of parameter passed to the action.</typeparam>
+        /// <param name="computeDerived">The action to be invoked to compute derive partitions.</param>
         /// <param name="parameter">The parameter to be passed to the action.</param>
-        /// <param name="outputPartitionName">The output partition name to be created.</param>
-        /// <param name="overwrite">Flag indicating whether the partition should be overwritten. Default is false.</param>
-        /// <param name="outputStoreName">The name of the output data store. Default is null.</param>
-        /// <param name="outputPartitionPath">The path of the output partition. Default is null.</param>
-        /// <param name="replayDescriptor">The replay descriptor to us.</param>
-        /// <param name="progress">An object that can be used for reporting progress.</param>
-        /// <param name="cancellationToken">A token for cancelling the asynchronous task.</param>
-        /// <returns>A task that represents the asynchronous operation.</returns>
-        public async Task CreateDerivedPartitionAsync<TParameter>(
+        /// <param name="outputPartitionName">The name of the output partition to be created.</param>
+        /// <param name="overwrite">An optional flag indicating whether the partition should be overwritten. Default is false.</param>
+        /// <param name="outputStoreName">An optional name for the output data store. Default is null.</param>
+        /// <param name="outputStorePath">An optional path for the output data store. Default is null.</param>
+        /// <param name="replayDescriptor">An optional replay descriptor to use when creating the derived partition.</param>
+        /// <param name="deliveryPolicy">Pipeline-level delivery policy to use when creating the derived partition.</param>
+        /// <param name="enableDiagnostics">Indicates whether to enable collecting and publishing diagnostics information on the Pipeline.Diagnostics stream.</param>
+        /// <param name="progress">An optional progress object to be used for reporting progress.</param>
+        /// <param name="cancellationToken">An optional token for canceling the asynchronous task.</param>
+        /// <returns>A task that represents the asynchronous compute derive partition operation.</returns>
+        public async Task CreateDerivedPsiPartitionAsync<TParameter>(
             Action<Pipeline, SessionImporter, Exporter, TParameter> computeDerived,
             TParameter parameter,
             string outputPartitionName,
-            bool overwrite = false,
-            string outputStoreName = null,
-            string outputPartitionPath = null,
+            bool overwrite,
+            string outputStoreName,
+            string outputStorePath,
             ReplayDescriptor replayDescriptor = null,
+            DeliveryPolicy deliveryPolicy = null,
+            bool enableDiagnostics = false,
             IProgress<(string, double)> progress = null,
-            CancellationToken cancellationToken = default(CancellationToken))
+            CancellationToken cancellationToken = default)
         {
+            if (outputStoreName == null || outputStorePath == null)
+            {
+                throw new InvalidOperationException("The output store path and store name need to be specified.");
+            }
+
             // check for cancellation before making any changes
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -174,48 +284,37 @@ namespace Microsoft.Psi.Data
                 }
             }
 
-            if (outputStoreName == null)
-            {
-                // if store name is not explicitly specified, use the output partition name
-                outputStoreName = outputPartitionName;
-            }
-
             await Task.Run(
                 () =>
                 {
                     try
                     {
                         // create and run the pipeline
-                        using (var pipeline = Pipeline.Create())
+                        using var pipeline = Pipeline.Create(enableDiagnostics: enableDiagnostics, deliveryPolicy: deliveryPolicy);
+                        var importer = SessionImporter.Open(pipeline, this);
+                        var exporter = PsiStore.Create(pipeline, outputStoreName, outputStorePath, createSubdirectory: false);
+
+                        computeDerived(pipeline, importer, exporter, parameter);
+
+                        // Add a default replay strategy
+                        if (replayDescriptor == null)
                         {
-                            var importer = SessionImporter.Open(pipeline, this);
-                            var exporter = Store.Create(pipeline, outputStoreName, outputPartitionPath);
+                            replayDescriptor = ReplayDescriptor.ReplayAll;
+                        }
 
-                            computeDerived(pipeline, importer, exporter, parameter);
+                        pipeline.RunAsync(replayDescriptor, progress != null ? new Progress<double>(p => progress.Report((this.Name, p))) : null);
 
-                            // Add a default replay strategy
-                            if (replayDescriptor == null)
-                            {
-                                replayDescriptor = ReplayDescriptor.ReplayAll;
-                            }
-
-                            pipeline.RunAsync(replayDescriptor, progress != null ? new Progress<double>(p => progress.Report((null, p))) : null);
-
-                            var durationTicks = pipeline.ReplayDescriptor.End.Ticks - pipeline.ReplayDescriptor.Start.Ticks;
-                            while (!pipeline.WaitAll(100))
-                            {
-                                // periodically check for cancellation
-                                cancellationToken.ThrowIfCancellationRequested();
-                            }
+                        var durationTicks = pipeline.ReplayDescriptor.End.Ticks - pipeline.ReplayDescriptor.Start.Ticks;
+                        while (!pipeline.WaitAll(100))
+                        {
+                            // periodically check for cancellation
+                            cancellationToken.ThrowIfCancellationRequested();
                         }
                     }
                     catch (OperationCanceledException)
                     {
-                        // if operation was canceled, remove the partially-written store
-                        if (StoreCommon.TryGetPathToLatestVersion(outputStoreName, outputPartitionPath, out string storePath))
-                        {
-                            this.SafeDirectoryDelete(storePath, true);
-                        }
+                        // if operation was canceled, remove the store
+                        PsiStore.Delete((outputStoreName, outputStorePath));
 
                         throw;
                     }
@@ -223,21 +322,7 @@ namespace Microsoft.Psi.Data
                 cancellationToken);
 
             // add the partition
-            this.AddStorePartition(outputStoreName, outputPartitionPath, outputPartitionName);
-        }
-
-        /// <summary>
-        /// Creates and adds a new data partition.
-        /// </summary>
-        /// <param name="storeName">The name of the data store.</param>
-        /// <param name="storePath">The path of the data store.</param>
-        /// <param name="partitionName">The partition name. Default is null.</param>
-        /// <returns>The newly added data partition.</returns>
-        public StorePartition CreateStorePartition(string storeName, string storePath, string partitionName = null)
-        {
-            var partition = StorePartition.Create(this, storeName, storePath, partitionName);
-            this.AddPartition(partition);
-            return partition;
+            this.AddPsiStorePartition(outputStoreName, outputStorePath, outputPartitionName);
         }
 
         /// <summary>
@@ -247,6 +332,17 @@ namespace Microsoft.Psi.Data
         public void RemovePartition(IPartition partition)
         {
             this.InternalPartitions.Remove(partition);
+            this.OnSessionChanged();
+        }
+
+        /// <summary>
+        /// Method called when structure of the session changed.
+        /// </summary>
+        protected virtual void OnSessionChanged()
+        {
+            this.Dataset?.OnDatasetChanged();
+            EventHandler handler = this.SessionChanged;
+            handler?.Invoke(this, EventArgs.Empty);
         }
 
         /// <summary>
@@ -262,6 +358,7 @@ namespace Microsoft.Psi.Data
             }
 
             this.InternalPartitions.Add(partition);
+            this.OnSessionChanged();
         }
 
         [OnDeserialized]
@@ -271,34 +368,6 @@ namespace Microsoft.Psi.Data
             {
                 partition.Session = this;
             }
-        }
-
-        /// <summary>
-        /// Due to the runtime's asynchronous behaviour, we may try to
-        /// delete our test directory before the runtime has finished
-        /// messing with it.  This method will keep trying to delete
-        /// the directory until the runtime shuts down.
-        /// </summary>
-        /// <param name="path">The path to the Directory to be deleted.</param>
-        /// <param name="recursive">Delete all subdirectories and files.</param>
-        private void SafeDirectoryDelete(string path, bool recursive)
-        {
-            for (int iteration = 0; iteration < 10; iteration++)
-            {
-                try
-                {
-                    Directory.Delete(path, recursive);
-                    return;
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    // Something in the directory is probably still being
-                    // accessed by the process under test, so try again shortly.
-                    Thread.Sleep(200);
-                }
-            }
-
-            throw new ApplicationException(string.Format("Unable to delete directory \"{0}\" after multiple attempts", path));
         }
     }
 }

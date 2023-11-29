@@ -17,6 +17,7 @@ namespace Microsoft.Psi.Components
         private readonly Action<TEventHandler> unsubscribe;
         private readonly TEventHandler eventHandler;
         private readonly Pipeline pipeline;
+        private readonly string name;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="EventSource{TEventHandler, TOut}"/> class.
@@ -25,7 +26,7 @@ namespace Microsoft.Psi.Components
         /// <see cref="Post"/> action delegate into an event handler compatible with the external
         /// event that is being subscribed to.
         /// </summary>
-        /// <param name="pipeline">The Psi pipeline.</param>
+        /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="subscribe">The delegate that subscribes to the external event.</param>
         /// <param name="unsubscribe">The delegate that unsubscribes from the external event.</param>
         /// <param name="converter">
@@ -33,13 +34,16 @@ namespace Microsoft.Psi.Components
         /// handler of type <typeparamref name="TEventHandler"/> that will be subscribed to the
         /// external event by the <paramref name="subscribe"/> delegate.
         /// </param>
+        /// <param name="name">An optional name for the component.</param>
         public EventSource(
             Pipeline pipeline,
             Action<TEventHandler> subscribe,
             Action<TEventHandler> unsubscribe,
-            Func<Action<TOut>, TEventHandler> converter)
+            Func<Action<TOut>, TEventHandler> converter,
+            string name = nameof(EventSource<TEventHandler, TOut>))
         {
             this.pipeline = pipeline;
+            this.name = name;
             this.Out = pipeline.CreateEmitter<TOut>(this, nameof(this.Out));
             this.subscribe = subscribe;
             this.unsubscribe = unsubscribe;
@@ -72,6 +76,9 @@ namespace Microsoft.Psi.Components
             this.unsubscribe(this.eventHandler);
             notifyCompleted();
         }
+
+        /// <inheritdoc/>
+        public override string ToString() => this.name;
 
         /// <summary>
         /// Posts a value on the output stream.

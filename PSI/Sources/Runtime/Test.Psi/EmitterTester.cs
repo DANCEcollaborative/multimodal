@@ -9,13 +9,28 @@ namespace Test.Psi
     using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.Psi;
+    using Microsoft.Psi.Executive;
     using Microsoft.VisualStudio.TestTools.UnitTesting;
 
     [TestClass]
     public class EmitterTester
     {
-        // make out local version of immediate, to make sure it's synchronous even in debug builds
-        private static readonly DeliveryPolicy immediate = new DeliveryPolicy(1, int.MaxValue, null, true, true);
+        // custom delivery policy that attempts synchronous delivery for testing purposes
+        private static readonly DeliveryPolicy Immediate = new DeliveryPolicy(1, int.MaxValue, null, null, true);
+
+        // maintain our own receiver ids
+        private static int lastReceiverId = -1;
+
+        // creates a custom receiver that does not enforce isolation on synchronous delivery
+        private static Receiver<T> CreateNonIsolatedReceiver<T>(Pipeline pipeline, object owner, Action<Message<T>> action, string name)
+        {
+            PipelineElement node = pipeline.GetOrCreateNode(owner);
+
+            // create custom receivers with a negative receiver id to ensure they do not clash with those created by the public Pipeline methods
+            var receiver = new Receiver<T>(Interlocked.Decrement(ref lastReceiverId), name, node, owner, action, node.SyncContext, pipeline, enforceIsolation: false);
+            node.AddInput(name, receiver);
+            return receiver;
+        }
 
         [TestMethod]
         [Timeout(60000)]
@@ -49,7 +64,8 @@ namespace Test.Psi
             STClass result = null;
             using (var p = Pipeline.Create("ReceiveClassByRef", DeliveryPolicy.Unlimited, allowSchedulingOnExternalThreads: true))
             {
-                var receiver = p.CreateReceiver<STClass>(
+                var receiver = CreateNonIsolatedReceiver<STClass>(
+                    p,
                     this,
                     msg =>
                     {
@@ -57,7 +73,7 @@ namespace Test.Psi
                     },
                     "receiver");
 
-                Generators.Return(p, c).PipeTo(receiver, immediate);
+                Generators.Return(p, c).PipeTo(receiver, Immediate);
                 p.Run();
             }
 
@@ -101,7 +117,8 @@ namespace Test.Psi
 
             using (var p = Pipeline.Create("ReceiveStructByRef", DeliveryPolicy.Unlimited, allowSchedulingOnExternalThreads: true))
             {
-                var receiver = p.CreateReceiver<STStruct>(
+                var receiver = CreateNonIsolatedReceiver<STStruct>(
+                    p,
                     this,
                     msg =>
                     {
@@ -109,7 +126,7 @@ namespace Test.Psi
                     },
                     "receiver");
 
-                Generators.Return(p, s).PipeTo(receiver, immediate);
+                Generators.Return(p, s).PipeTo(receiver, Immediate);
                 p.Run();
             }
 
@@ -159,12 +176,84 @@ namespace Test.Psi
                 }
                 catch (AggregateException errors)
                 {
-                    // expecting an ArgumentOutOfRangeException wrapped in an AggregateException
-                    Assert.AreEqual(1, errors.InnerExceptions.Count);
+                    // expecting at least one ArgumentOutOfRangeException wrapped in an AggregateException
+                    Assert.IsTrue(errors.InnerExceptions.Count > 0);
                     Assert.IsInstanceOfType(errors.InnerException, typeof(ArgumentOutOfRangeException));
                     CollectionAssert.AreEqual(new[] { 0, 1, 2, 3, 4, 5 }, results);
                 }
             }
+        }
+
+        [TestMethod]
+        [Timeout(60000)]
+        public void DeliverOutOfOrderSequenceIdsShouldThrow()
+        {
+            var exceptionThrown = false;
+            try
+            {
+                using (var p = Pipeline.Create())
+                {
+                    var time = DateTime.UtcNow;
+                    var emitter = p.CreateEmitter<int>(this, "test");
+                    emitter.Deliver(123, new Envelope(time, time, emitter.Id, 2));
+                    emitter.Deliver(456, new Envelope(time.AddTicks(1), time.AddTicks(1), emitter.Id, 1)); // this should fail (posting with out of order sequence ID)
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                exceptionThrown = true;
+                Assert.IsTrue(ex.Message.StartsWith("Attempted to post a message with a sequence ID that is out of order"));
+            }
+
+            Assert.IsTrue(exceptionThrown);
+        }
+
+        [TestMethod]
+        [Timeout(60000)]
+        public void DeliverOutOfOrderOriginatingTimesShouldThrow()
+        {
+            var exceptionThrown = false;
+            try
+            {
+                using (var p = Pipeline.Create())
+                {
+                    var time = DateTime.UtcNow;
+                    var emitter = p.CreateEmitter<int>(this, "test");
+                    emitter.Deliver(123, new Envelope(time, time, emitter.Id, 2));
+                    emitter.Deliver(456, new Envelope(time, time.AddTicks(1), emitter.Id, 3)); // this should fail (posting with non-increasing originating times)
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                exceptionThrown = true;
+                Assert.IsTrue(ex.Message.StartsWith("Attempted to post a message without strictly increasing originating times"));
+            }
+
+            Assert.IsTrue(exceptionThrown);
+        }
+
+        [TestMethod]
+        [Timeout(60000)]
+        public void DeliverOutOfOrderCreationTimesShouldThrow()
+        {
+            var exceptionThrown = false;
+            try
+            {
+                using (var p = Pipeline.Create())
+                {
+                    var time = DateTime.UtcNow;
+                    var emitter = p.CreateEmitter<int>(this, "test");
+                    emitter.Deliver(123, new Envelope(time, time, emitter.Id, 2));
+                    emitter.Deliver(456, new Envelope(time.AddTicks(1), time.AddTicks(-1), emitter.Id, 3)); // this should fail (posting with out of order creation times)
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                exceptionThrown = true;
+                Assert.IsTrue(ex.Message.StartsWith("Attempted to post a message that is out of order in wall-clock time"));
+            }
+
+            Assert.IsTrue(exceptionThrown);
         }
 
 #if DEBUG

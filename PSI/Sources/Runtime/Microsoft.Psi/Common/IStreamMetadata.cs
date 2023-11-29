@@ -26,26 +26,46 @@ namespace Microsoft.Psi
         string TypeName { get; }
 
         /// <summary>
-        /// Gets the name of the partation where the stream is stored.
+        /// Gets the name of the type of supplemental metadata for the stream the metadata represents.
         /// </summary>
-        string PartitionName { get; }
+        string SupplementalMetadataTypeName { get; }
 
         /// <summary>
-        /// Gets the path of the partation where the stream is stored.
+        /// Gets the name of the store containing the stream.
         /// </summary>
-        string PartitionPath { get; }
+        string StoreName { get; }
+
+        /// <summary>
+        /// Gets the path of the store containing the stream.
+        /// </summary>
+        string StorePath { get; }
+
+        /// <summary>
+        /// Gets the time when the stream was opened.
+        /// </summary>
+        DateTime OpenedTime { get; }
+
+        /// <summary>
+        /// Gets the time when the stream was closed.
+        /// </summary>
+        DateTime ClosedTime { get; }
+
+        /// <summary>
+        /// Gets a value indicating whether the stream has been closed.
+        /// </summary>
+        bool IsClosed { get; }
 
         /// <summary>
         /// Gets the first creation time of a message in the stream.
         /// </summary>
-        /// <seealso cref="Envelope.Time"/>
-        DateTime FirstMessageTime { get; }
+        /// <seealso cref="Envelope.CreationTime"/>
+        DateTime FirstMessageCreationTime { get; }
 
         /// <summary>
         /// Gets the last creation time of a message in the stream.
         /// </summary>
-        /// <seealso cref="Envelope.Time"/>
-        DateTime LastMessageTime { get; }
+        /// <seealso cref="Envelope.CreationTime"/>
+        DateTime LastMessageCreationTime { get; }
 
         /// <summary>
         /// Gets the first originating time of a message in the stream.
@@ -60,19 +80,26 @@ namespace Microsoft.Psi
         DateTime LastMessageOriginatingTime { get; }
 
         /// <summary>
-        /// Gets the average size of messages in the stream.
-        /// </summary>
-        int AverageMessageSize { get; }
-
-        /// <summary>
-        /// Gets the average latency of messages in the stream, in microseconds.
-        /// </summary>
-        int AverageLatency { get; }
-
-        /// <summary>
         /// Gets the number of messages in the stream.
         /// </summary>
-        int MessageCount { get; }
+        long MessageCount { get; }
+
+        /// <summary>
+        /// Gets the average size (bytes) of messages in the stream.
+        /// </summary>
+        double AverageMessageSize { get; }
+
+        /// <summary>
+        /// Gets the average latency (milliseconds) of messages in the stream.
+        /// </summary>
+        double AverageMessageLatencyMs { get; }
+
+        /// <summary>
+        /// Gets supplemental stream metadata.
+        /// </summary>
+        /// <typeparam name="T">Type of supplemental metadata.</typeparam>
+        /// <returns>Supplemental metadata.</returns>
+        T GetSupplementalMetadata<T>();
 
         /// <summary>
         /// Updates this stream metadata with the specified envelope and size.

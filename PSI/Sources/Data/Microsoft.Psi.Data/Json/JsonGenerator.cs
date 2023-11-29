@@ -10,7 +10,7 @@ namespace Microsoft.Psi.Data.Json
     using Newtonsoft.Json.Linq;
 
     /// <summary>
-    /// Defines a component that plays back data from a JSON store.
+    /// Component that plays back data from a JSON store.
     /// </summary>
     public class JsonGenerator : Generator, IDisposable
     {
@@ -22,21 +22,23 @@ namespace Microsoft.Psi.Data.Json
         /// <summary>
         /// Initializes a new instance of the <see cref="JsonGenerator"/> class.
         /// </summary>
-        /// <param name="pipeline">Pipeline this component is a part of.</param>
-        /// <param name="name">The name of the application that generated the persisted files, or the root name of the files.</param>
-        /// <param name="path">The directory in which the main persisted file resides.</param>
-        public JsonGenerator(Pipeline pipeline, string name, string path)
-            : this(pipeline, new JsonStoreReader(name, path))
+        /// <param name="pipeline">The pipeline to add the component to.</param>
+        /// <param name="storeName">The name of the application that generated the persisted files, or the root name of the files.</param>
+        /// <param name="storePath">The directory in which the main persisted file resides.</param>
+        /// <param name="name">An optional name for the component.</param>
+        public JsonGenerator(Pipeline pipeline, string storeName, string storePath, string name = nameof(JsonGenerator))
+            : this(pipeline, new JsonStoreReader(storeName, storePath), name)
         {
         }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="JsonGenerator"/> class.
         /// </summary>
-        /// <param name="pipeline">Pipeline this component is a part of.</param>
+        /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="reader">The underlying store reader.</param>
-        protected JsonGenerator(Pipeline pipeline, JsonStoreReader reader)
-            : base(pipeline)
+        /// <param name="name">An optional name for the component.</param>
+        protected JsonGenerator(Pipeline pipeline, JsonStoreReader reader, string name = nameof(JsonGenerator))
+            : base(pipeline, name: name)
         {
             this.pipeline = pipeline;
             this.reader = reader;
@@ -61,7 +63,7 @@ namespace Microsoft.Psi.Data.Json
         public IEnumerable<IStreamMetadata> AvailableStreams => this.reader.AvailableStreams;
 
         /// <summary>
-        /// Gets the orginating time interval (earliest to latest) of the messages in the underlying data store.
+        /// Gets the originating time interval (earliest to latest) of the messages in the underlying data store.
         /// </summary>
         public TimeInterval OriginatingTimeInterval => this.reader.OriginatingTimeInterval;
 
@@ -90,7 +92,7 @@ namespace Microsoft.Psi.Data.Json
         /// </summary>
         /// <typeparam name="T">Type of data in underlying stream.</typeparam>
         /// <param name="streamName">The name of the stream.</param>
-        /// <returns>The newly created emmitte that generates messages from the stream of type <typeparamref name="T"/>.</returns>
+        /// <returns>The newly created emitter that generates messages from the stream of type <typeparamref name="T"/>.</returns>
         public Emitter<T> OpenStream<T>(string streamName)
         {
             // if stream already opened, return emitter
@@ -107,7 +109,7 @@ namespace Microsoft.Psi.Data.Json
             var metadata = this.reader.OpenStream(streamName);
 
             // register this stream with the store catalog
-            this.pipeline.ConfigurationStore.Set(Store.StreamMetadataNamespace, streamName, metadata);
+            this.pipeline.ConfigurationStore.Set(Exporter.StreamMetadataNamespace, streamName, metadata);
 
             // create emitter
             var emitter = this.pipeline.CreateEmitter<T>(this, streamName);
@@ -118,6 +120,7 @@ namespace Microsoft.Psi.Data.Json
                     var t = token.ToObject<T>();
                     emitter.Post(t, originatingTime);
                 });
+            this.streams.Add(streamName);
 
             return emitter;
         }

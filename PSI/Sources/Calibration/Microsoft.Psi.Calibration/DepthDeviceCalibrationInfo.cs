@@ -60,6 +60,7 @@ namespace Microsoft.Psi.Calibration
                 Vector<double>.Build.DenseOfArray(colorTangentialDistortionCoefficients));
 
             this.ColorExtrinsics = new CoordinateSystem(depthToColorTransform);
+            this.ColorPose = this.ColorExtrinsics.Invert();
 
             this.DepthIntrinsics = new CameraIntrinsics(
                 depthWidth,
@@ -69,10 +70,14 @@ namespace Microsoft.Psi.Calibration
                 Vector<double>.Build.DenseOfArray(depthTangentialDistortionCoefficients));
 
             this.DepthExtrinsics = new CoordinateSystem(depthExtrinsics);
+            this.DepthPose = this.DepthExtrinsics.Invert();
         }
 
         /// <inheritdoc/>
         public CoordinateSystem ColorExtrinsics { get; }
+
+        /// <inheritdoc/>
+        public CoordinateSystem ColorPose { get; }
 
         /// <inheritdoc/>
         public ICameraIntrinsics ColorIntrinsics { get; }
@@ -81,13 +86,27 @@ namespace Microsoft.Psi.Calibration
         public CoordinateSystem DepthExtrinsics { get; }
 
         /// <inheritdoc/>
+        public CoordinateSystem DepthPose { get; }
+
+        /// <inheritdoc/>
         public ICameraIntrinsics DepthIntrinsics { get; }
 
         /// <inheritdoc/>
-        public Point2D ToColorSpace(Point3D point3D)
+        public Point2D? GetPixelPosition(Point3D point3D, bool nullIfOutsideFieldOfView = true)
         {
+            // First convert the point into camera coordinates.
             var point3DInColorCamera = this.ColorExtrinsics.Transform(point3D);
-            return this.ColorIntrinsics.ToPixelSpace(point3DInColorCamera, true);
+
+            // Then convert to pixel space.
+            return this.ColorIntrinsics.GetPixelPosition(point3DInColorCamera, true, nullIfOutsideFieldOfView);
+        }
+
+        /// <inheritdoc/>
+        public bool TryGetPixelPosition(Point3D point3D, out Point2D pixelPosition, bool nullIfOutsideFieldOfView = true)
+        {
+            var point2D = this.GetPixelPosition(point3D, nullIfOutsideFieldOfView);
+            pixelPosition = point2D.HasValue ? point2D.Value : default;
+            return point2D.HasValue;
         }
     }
 }

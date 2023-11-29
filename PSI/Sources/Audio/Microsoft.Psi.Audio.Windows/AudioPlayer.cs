@@ -35,12 +35,13 @@ namespace Microsoft.Psi.Audio
         /// </summary>
         /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="configuration">The component configuration.</param>
-        public AudioPlayer(Pipeline pipeline, AudioPlayerConfiguration configuration)
-            : base(pipeline)
+        /// <param name="name">An optional name for the component.</param>
+        public AudioPlayer(Pipeline pipeline, AudioPlayerConfiguration configuration, string name = nameof(AudioPlayer))
+            : base(pipeline, name)
         {
             this.pipeline = pipeline;
             this.configuration = configuration;
-            this.currentInputFormat = configuration.InputFormat;
+            this.currentInputFormat = configuration.Format;
             this.AudioLevelInput = pipeline.CreateReceiver<double>(this, this.SetAudioLevel, nameof(this.AudioLevelInput));
             this.AudioLevel = pipeline.CreateEmitter<double>(this, nameof(this.AudioLevel));
 
@@ -58,10 +59,12 @@ namespace Microsoft.Psi.Audio
         /// </summary>
         /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="configurationFilename">The component configuration file.</param>
-        public AudioPlayer(Pipeline pipeline, string configurationFilename = null)
+        /// <param name="name">An optional name for the component.</param>
+        public AudioPlayer(Pipeline pipeline, string configurationFilename = null, string name = nameof(AudioPlayer))
             : this(
                 pipeline,
-                (configurationFilename == null) ? new AudioPlayerConfiguration() : new ConfigurationHelper<AudioPlayerConfiguration>(configurationFilename).Configuration)
+                (configurationFilename == null) ? new AudioPlayerConfiguration() : new ConfigurationHelper<AudioPlayerConfiguration>(configurationFilename).Configuration,
+                name)
         {
         }
 
@@ -109,7 +112,7 @@ namespace Microsoft.Psi.Audio
                     // Make a copy of the new input format (don't just use a direct reference,
                     // as the object graph of the Message.Data will be reclaimed by the runtime).
                     audioData.Data.Format.DeepClone(ref this.currentInputFormat);
-                    this.configuration.InputFormat = this.currentInputFormat;
+                    this.configuration.Format = this.currentInputFormat;
 
                     // stop and restart the renderer to switch formats
                     this.wasapiRender.StopRendering();
@@ -117,7 +120,7 @@ namespace Microsoft.Psi.Audio
                         this.configuration.BufferLengthSeconds,
                         this.configuration.TargetLatencyInMs,
                         this.configuration.Gain,
-                        this.configuration.InputFormat);
+                        this.configuration.Format);
                 }
 
                 // Append the audio buffer to the audio renderer
@@ -154,7 +157,7 @@ namespace Microsoft.Psi.Audio
                 this.configuration.BufferLengthSeconds,
                 this.configuration.TargetLatencyInMs,
                 this.configuration.Gain,
-                this.configuration.InputFormat);
+                this.configuration.Format);
         }
 
         /// <inheritdoc/>

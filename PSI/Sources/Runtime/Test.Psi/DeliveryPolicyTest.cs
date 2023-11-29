@@ -8,6 +8,7 @@ namespace Test.Psi
     using System.Linq;
     using System.Threading;
     using Microsoft.Psi;
+    using Microsoft.Psi.Streams;
     using Microsoft.VisualStudio.TestTools.UnitTesting;
 
     [TestClass]
@@ -17,23 +18,26 @@ namespace Test.Psi
         [Timeout(60000)]
         public void ThrottledTimer()
         {
+            // Create a lossy policy that throttles and drops messages once the maximum queue size (1) is reached
+            var lossyThrottlePolicy = DeliveryPolicy.QueueSizeConstrained(1, true);
+
             int countA = 0, countB = 0, countC = 0;
             using (var p = Pipeline.Create())
             {
                 Timers.Timer(p, TimeSpan.FromMilliseconds(1), (dt, ts) => countA++)
-                    .Do(_ => countB++, DeliveryPolicy.Throttle)
+                    .Do(_ => countB++, lossyThrottlePolicy)
                     .Do(
                         _ =>
                         {
                             Thread.Sleep(5);
                             countC++;
-                        }, DeliveryPolicy.Throttle);
+                        }, lossyThrottlePolicy);
 
                 p.RunAsync();
                 p.WaitAll(100);
             }
 
-            // Timer continues to post so messages will be dropped at receiver B until C stops throttling it 
+            // Timer continues to post so messages will be dropped at receiver B until C stops throttling it
             Assert.IsTrue(countA > 0);
             Assert.IsTrue(countA > countB);
             Assert.AreEqual(countB, countC);
@@ -77,12 +81,13 @@ namespace Test.Psi
             using (var p = Pipeline.Create())
             {
                 var numGen = Generators.Range(p, 10, 3, TimeSpan.FromMilliseconds(100));
-                numGen.Do(m =>
-                {
-                    Thread.Sleep(500);
-                    loopCount++;
-                    lastMsg = m;
-                }, DeliveryPolicy.LatestMessage);
+                numGen.Do(
+                    m =>
+                    {
+                        Thread.Sleep(500);
+                        loopCount++;
+                        lastMsg = m;
+                    }, DeliveryPolicy.LatestMessage);
 
                 p.RunAsync();
                 p.WaitAll(700);
@@ -252,18 +257,94 @@ namespace Test.Psi
                 p.Run();
             }
 
-            // with latest we only get the first message since the others are dropped, and the 
-            // last message.
-            CollectionAssert.AreEqual(latest, new List<int>() { 0, 9 });
+            // with latest we may drop some messages except the last message.
+            CollectionAssert.IsSubsetOf(new List<int>() { 9 }, latest);
+            CollectionAssert.AllItemsAreUnique(latest); // ensure uniqueness
+            CollectionAssert.AreEqual(latest.OrderBy(x => x).ToList(), latest); // ensure order
 
             // with guarantees we get all the even messages.
-            CollectionAssert.AreEqual(latestWithGuarantees, new List<int>() { 0, 2, 4, 6, 8 });
+            CollectionAssert.IsSubsetOf(new List<int>() { 0, 2, 4, 6, 8 }, latestWithGuarantees);
+            CollectionAssert.AllItemsAreUnique(latestWithGuarantees);
+            CollectionAssert.AreEqual(latestWithGuarantees.OrderBy(x => x).ToList(), latestWithGuarantees);
 
             // with guarantees we get all the even and multiple of 3 messages.
-            CollectionAssert.AreEqual(latestWithGuaranteesChained, new List<int>() { 0, 2, 3, 4, 6, 8, 9 });
+            CollectionAssert.IsSubsetOf(new List<int>() { 0, 2, 3, 4, 6, 8, 9 }, latestWithGuaranteesChained);
+            CollectionAssert.AllItemsAreUnique(latestWithGuaranteesChained);
+            CollectionAssert.AreEqual(latestWithGuaranteesChained.OrderBy(x => x).ToList(), latestWithGuaranteesChained);
 
             // with guarantees, even when queue size is 2, we get all the even messages.
-            CollectionAssert.AreEqual(queueSizeTwoWithGuarantees, new List<int>() { 0, 2, 4, 6, 8 });
+            CollectionAssert.IsSubsetOf(new List<int>() { 0, 2, 4, 6, 8 }, queueSizeTwoWithGuarantees);
+            CollectionAssert.AllItemsAreUnique(queueSizeTwoWithGuarantees);
+            CollectionAssert.AreEqual(queueSizeTwoWithGuarantees.OrderBy(x => x).ToList(), queueSizeTwoWithGuarantees);
+        }
+
+        [TestMethod]
+        [Timeout(60000)]
+        public void HandleClosingMessage()
+        {
+            // Create a delivery policy specifying a maximum queue size of 1
+            var deliveryPolicy = new DeliveryPolicy<int>(
+                1,
+                1,
+                null,
+                null,
+                false,
+                guaranteeDelivery: value => value == 2, // only guarantee message value is 2
+                "TestDeliveryPolicy");
+
+            var deliveryQueue = new DeliveryQueue<int>(deliveryPolicy, RecyclingPool.Create<int>());
+
+            // Enqueue a closing message - message should be queued
+            deliveryQueue.Enqueue(
+                Message.Create(0, DateTime.UtcNow, DateTime.UtcNow, 0, int.MaxValue), // closing message
+                null,
+                default,
+                null,
+                out _);
+
+            // Enqueue a message with value 1 - message should not be queued
+            deliveryQueue.Enqueue(
+                Message.Create(1, DateTime.UtcNow, DateTime.UtcNow, 0, 0),
+                null,
+                default,
+                null,
+                out _);
+
+            // Check that closing message ignores guaranteeDelivery => false result
+            Assert.IsTrue(deliveryQueue.TryDequeue(out var message, out _, DateTime.UtcNow, null, null));
+            Assert.AreEqual(int.MaxValue, message.SequenceId);
+            Assert.IsTrue(deliveryQueue.IsEmpty);
+
+            // Enqueue a message with value 1 - message should be queued
+            deliveryQueue.Enqueue(
+                Message.Create(1, DateTime.UtcNow, DateTime.UtcNow, 0, 0),
+                null,
+                default,
+                null,
+                out _);
+
+            // Enqueue a message with value 2 - message should be queued (guaranteeDelivery => true)
+            deliveryQueue.Enqueue(
+                Message.Create(2, DateTime.UtcNow, DateTime.UtcNow, 0, 0),
+                null,
+                default,
+                null,
+                out _);
+
+            // Enqueue a closing message - message should be queued
+            deliveryQueue.Enqueue(
+                Message.Create(0, DateTime.UtcNow, DateTime.UtcNow, 0, int.MaxValue), // closing message
+                null,
+                default,
+                null,
+                out _);
+
+            // Check that only guaranteed and closing messages are queued
+            Assert.IsTrue(deliveryQueue.TryDequeue(out message, out _, DateTime.UtcNow, null, null));
+            Assert.AreEqual(2, message.Data);
+            Assert.IsTrue(deliveryQueue.TryDequeue(out message, out _, DateTime.UtcNow, null, null));
+            Assert.AreEqual(int.MaxValue, message.SequenceId);
+            Assert.IsTrue(deliveryQueue.IsEmpty);
         }
     }
 }

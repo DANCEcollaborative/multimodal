@@ -35,7 +35,7 @@ namespace Microsoft.Psi
 
         public void AddRef()
         {
-            var newVal = Interlocked.Increment(ref this.refCount);
+            Interlocked.Increment(ref this.refCount);
         }
 
         public void Release()
@@ -55,9 +55,9 @@ namespace Microsoft.Psi
                 }
                 else
                 {
-                    if (this.resource is IDisposable)
+                    if (this.resource is IDisposable disposable)
                     {
-                        ((IDisposable)this.resource).Dispose();
+                        disposable.Dispose();
                     }
                 }
 
@@ -71,16 +71,27 @@ namespace Microsoft.Psi
 
         private class CustomSerializer : ISerializer<SharedContainer<T>>
         {
-            public const int Version = 2;
+            public const int LatestSchemaVersion = 2;
             private SerializationHandler<T> handler;
+
+            /// <inheritdoc />
+            public bool? IsClearRequired => false;
 
             public TypeSchema Initialize(KnownSerializers serializers, TypeSchema targetSchema)
             {
                 this.handler = serializers.GetHandler<T>();
-                var type = this.GetType();
-                var name = TypeSchema.GetContractName(type, serializers.RuntimeVersion);
+                var type = typeof(SharedContainer<T>);
+                var name = TypeSchema.GetContractName(type, serializers.RuntimeInfo.SerializationSystemVersion);
                 var resourceMember = new TypeMemberSchema("resource", typeof(T).AssemblyQualifiedName, true);
-                var schema = new TypeSchema(name, TypeSchema.GetId(name), type.AssemblyQualifiedName, TypeFlags.IsClass, new TypeMemberSchema[] { resourceMember }, Version);
+                var schema = new TypeSchema(
+                    type.AssemblyQualifiedName,
+                    TypeFlags.IsClass,
+                    new TypeMemberSchema[] { resourceMember },
+                    name,
+                    TypeSchema.GetId(name),
+                    LatestSchemaVersion,
+                    this.GetType().AssemblyQualifiedName,
+                    serializers.RuntimeInfo.SerializationSystemVersion);
                 return targetSchema ?? schema;
             }
 
@@ -110,7 +121,7 @@ namespace Microsoft.Psi
             public void PrepareDeserializationTarget(BufferReader reader, ref SharedContainer<T> target, SerializationContext context)
             {
                 SharedPool<T> sharedPool = null;
-                T resource = default(T);
+                var resource = default(T);
 
                 if (target != null)
                 {

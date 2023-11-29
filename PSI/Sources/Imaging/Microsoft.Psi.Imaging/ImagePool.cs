@@ -3,7 +3,7 @@
 
 namespace Microsoft.Psi.Imaging
 {
-    using System;
+    using System.Drawing;
     using System.Drawing.Imaging;
 
     /// <summary>
@@ -11,8 +11,23 @@ namespace Microsoft.Psi.Imaging
     /// </summary>
     public static class ImagePool
     {
-        private static readonly KeyedSharedPool<Image, (int, int, PixelFormat)> Instance =
-            new KeyedSharedPool<Image, (int width, int height, PixelFormat format)>(key => Image.Create(key.width, key.height, key.format));
+        private static readonly KeyedSharedPool<Image, int> Instance = new (allocationSize => new Image(allocationSize));
+        private static int imageAllocationBlockSize = 1;
+
+        /// <summary>
+        /// Resets the pool of shared images.
+        /// </summary>
+        /// <param name="imageAllocationBlockSize">The image allocation block size to use.</param>
+        /// <param name="clearLiveObjects">Indicates whether to clear any live objects.</param>
+        /// <remarks>
+        /// If the clearLiveObjects flag is false, an exception is thrown if a reset is attempted while the pool
+        /// still contains live objects.
+        /// </remarks>
+        public static void Reset(int imageAllocationBlockSize, bool clearLiveObjects = false)
+        {
+            Instance.Reset(clearLiveObjects);
+            ImagePool.imageAllocationBlockSize = imageAllocationBlockSize;
+        }
 
         /// <summary>
         /// Gets or creates an image from the pool.
@@ -23,35 +38,36 @@ namespace Microsoft.Psi.Imaging
         /// <returns>A shared image from the pool.</returns>
         public static Shared<Image> GetOrCreate(int width, int height, PixelFormat pixelFormat)
         {
-            return Instance.GetOrCreate((width, height, pixelFormat));
+            var size = height * 4 * ((width * pixelFormat.GetBytesPerPixel() + 3) / 4);
+            var allocationSize = ((size + imageAllocationBlockSize - 1) / imageAllocationBlockSize) * imageAllocationBlockSize;
+            var sharedImage = Instance.GetOrCreate(allocationSize);
+            sharedImage.Resource.Initialize(width, height, pixelFormat);
+            return sharedImage;
         }
 
         /// <summary>
         /// Gets or creates an image from the pool and initializes it with a managed Bitmap object.
         /// </summary>
-        /// <param name="image">A bitmap from which to copy the image data.</param>
-        /// <returns>A shared image from the pool containing a copy of the image data from <paramref name="image"/>.</returns>
-        public static Shared<Image> GetOrCreate(System.Drawing.Bitmap image)
+        /// <param name="bitmap">A bitmap from which to copy the image data.</param>
+        /// <returns>A shared image from the pool containing a copy of the image data from <paramref name="bitmap"/>.</returns>
+        public static Shared<Image> GetOrCreateFromBitmap(Bitmap bitmap)
         {
-            BitmapData sourceData = image.LockBits(
-                new System.Drawing.Rectangle(0, 0, image.Width, image.Height),
+            BitmapData sourceData = bitmap.LockBits(
+                new Rectangle(0, 0, bitmap.Width, bitmap.Height),
                 ImageLockMode.ReadOnly,
-                image.PixelFormat);
-            Shared<Image> sharedImg = null;
+                bitmap.PixelFormat);
+            Shared<Image> sharedImage = null;
             try
             {
-                sharedImg = GetOrCreate(image.Width, image.Height, PixelFormatHelper.FromSystemPixelFormat(image.PixelFormat));
-                unsafe
-                {
-                    Buffer.MemoryCopy(sourceData.Scan0.ToPointer(), sharedImg.Resource.ImageData.ToPointer(), sourceData.Stride * sourceData.Height, sourceData.Stride * sourceData.Height);
-                }
+                sharedImage = GetOrCreate(bitmap.Width, bitmap.Height, PixelFormatHelper.FromSystemPixelFormat(bitmap.PixelFormat));
+                sharedImage.Resource.CopyFrom(sourceData);
             }
             finally
             {
-                image.UnlockBits(sourceData);
+                bitmap.UnlockBits(sourceData);
             }
 
-            return sharedImg;
+            return sharedImage;
         }
     }
 }

@@ -24,6 +24,7 @@ namespace Microsoft.Psi.Media
         private int handle = 0;
         private LinuxVideoInterop.Capability capabilities;
         private Thread background;
+        private volatile bool isStopping;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="MediaCaptureInternal"/> class.
@@ -63,7 +64,7 @@ namespace Microsoft.Psi.Media
         /// Open device.
         /// </summary>
         /// <remarks>
-        /// This also queries the device capabilites and ensures that it supports video capture and streaming.
+        /// This also queries the device capabilities and ensures that it supports video capture and streaming.
         /// </remarks>
         public void Open()
         {
@@ -160,9 +161,10 @@ namespace Microsoft.Psi.Media
 
                 LinuxVideoInterop.StreamOn(this.handle);
                 this.background = new Thread(new ThreadStart(this.ProcessFrames)) { IsBackground = true };
+                this.isStopping = false;
                 this.background.Start();
             }
-            catch (Exception ex)
+            catch
             {
                 for (var i = 0u; i < NumberOfDriverBuffers; i++)
                 {
@@ -173,7 +175,7 @@ namespace Microsoft.Psi.Media
                     }
                 }
 
-                throw ex;
+                throw;
             }
         }
 
@@ -182,11 +184,16 @@ namespace Microsoft.Psi.Media
         /// </summary>
         public void Close()
         {
-            LinuxVideoInterop.StreamOff(this.handle);
             if (this.file != null)
             {
+                // stop any running background thread and wait for it to terminate
+                this.isStopping = true;
+                this.background?.Join();
+
+                LinuxVideoInterop.StreamOff(this.handle);
                 this.file.Close();
                 this.file.Dispose();
+                this.file = null;
             }
         }
 
@@ -200,7 +207,7 @@ namespace Microsoft.Psi.Media
 
         private unsafe void ProcessFrames()
         {
-            while (true)
+            while (!this.isStopping)
             {
                 if (this.OnFrame != null)
                 {
@@ -254,12 +261,12 @@ namespace Microsoft.Psi.Media
             public string Description => this.InternalFormat.Description;
 
             /// <summary>
-            /// Gets a value indicating whether whether pixel format is compressed.
+            /// Gets a value indicating whether pixel format is compressed.
             /// </summary>
             public bool IsCompressed => (this.InternalFormat.Flags & LinuxVideoInterop.FormatFlags.Compressed) == LinuxVideoInterop.FormatFlags.Compressed;
 
             /// <summary>
-            /// Gets a value indicating whether whether pixel format is emulated (non-native).
+            /// Gets a value indicating whether pixel format is emulated (non-native).
             /// </summary>
             public bool IsEmulated => (this.InternalFormat.Flags & LinuxVideoInterop.FormatFlags.Emulated) == LinuxVideoInterop.FormatFlags.Emulated;
 
@@ -311,7 +318,7 @@ namespace Microsoft.Psi.Media
             public uint Size => this.InternalFormat.Pixel.SizeImage;
 
             /// <summary>
-            /// Gets internal vidio format (used to pass back to driver).
+            /// Gets internal video format (used to pass back to driver).
             /// </summary>
             internal LinuxVideoInterop.VideoFormat InternalFormat => this.internalFormat;
         }

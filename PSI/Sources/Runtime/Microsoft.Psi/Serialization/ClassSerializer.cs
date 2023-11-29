@@ -15,8 +15,6 @@ namespace Microsoft.Psi.Serialization
     /// <typeparam name="T">The type of objects this serializer knows how to handle.</typeparam>
     internal class ClassSerializer<T> : ISerializer<T>
     {
-        private const int Version = 1;
-
         // we use delegates (instead of generating a full class) because dynamic delegates (unlike dynamic types)
         // can access the private fields of the target type.
         private SerializeDelegate<T> serializeImpl;
@@ -33,9 +31,12 @@ namespace Microsoft.Psi.Serialization
         {
         }
 
+        /// <inheritdoc />
+        public bool? IsClearRequired => null; // depends on the generated implementation
+
         public TypeSchema Initialize(KnownSerializers serializers, TypeSchema targetSchema)
         {
-            var runtimeSchema = TypeSchema.FromType(typeof(T), serializers.RuntimeVersion, this.GetType(), Version);
+            var runtimeSchema = TypeSchema.FromType(typeof(T), this.GetType().AssemblyQualifiedName, serializers.RuntimeInfo.SerializationSystemVersion);
             var members = runtimeSchema.GetCompatibleMemberSet(targetSchema);
 
             this.deserializeImpl = Generator.GenerateDeserializeMethod<T>(il => Generator.EmitDeserializeFields(typeof(T), serializers, il, members));
@@ -91,7 +92,19 @@ namespace Microsoft.Psi.Serialization
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Clone(T instance, ref T target, SerializationContext context)
         {
-            this.cloneImpl(instance, ref target, context);
+            try
+            {
+                this.cloneImpl(instance, ref target, context);
+            }
+            catch (NotSupportedException)
+            {
+                if (instance.GetType().BaseType == typeof(MulticastDelegate))
+                {
+                    throw new NotSupportedException("Cannot clone Func/Action/Delegate. A common cause is posting or cloning IEnumerables holding closure references. A solution is to reify with `.ToList()` or similar before posting/cloning.");
+                }
+
+                throw;
+            }
         }
 
         /// <summary>
@@ -115,10 +128,7 @@ namespace Microsoft.Psi.Serialization
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void PrepareCloningTarget(T instance, ref T target, SerializationContext context)
         {
-            if (target == null)
-            {
-                target = (T)FormatterServices.GetUninitializedObject(typeof(T));
-            }
+            target ??= (T)FormatterServices.GetUninitializedObject(typeof(T));
         }
 
         /// <summary>
@@ -130,10 +140,7 @@ namespace Microsoft.Psi.Serialization
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void PrepareDeserializationTarget(BufferReader reader, ref T target, SerializationContext context)
         {
-            if (target == null)
-            {
-                target = (T)FormatterServices.GetUninitializedObject(typeof(T));
-            }
+            target ??= (T)FormatterServices.GetUninitializedObject(typeof(T));
         }
     }
 }

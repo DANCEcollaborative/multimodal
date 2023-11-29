@@ -18,18 +18,20 @@ namespace Microsoft.Psi.Components
         /// <summary>
         /// Initializes a new instance of the <see cref="Join{TPrimary, TSecondary, TInterpolation, TOut}"/> class.
         /// </summary>
-        /// <param name="pipeline">Pipeline to which this component belongs.</param>
+        /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="interpolator">Reproducible interpolator to use when joining the streams.</param>
         /// <param name="outputCreator">Mapping function from message pair to output.</param>
         /// <param name="secondaryCount">Number of secondary streams.</param>
         /// <param name="secondarySelector">Selector function mapping primary messages to secondary stream indices.</param>
+        /// <param name="name">An optional name for the component.</param>
         public Join(
             Pipeline pipeline,
             ReproducibleInterpolator<TSecondary, TInterpolation> interpolator,
             Func<TPrimary, TInterpolation[], TOut> outputCreator,
             int secondaryCount = 1,
-            Func<TPrimary, IEnumerable<int>> secondarySelector = null)
-            : base(pipeline, interpolator, outputCreator, secondaryCount, secondarySelector)
+            Func<TPrimary, IEnumerable<int>> secondarySelector = null,
+            string name = null)
+            : base(pipeline, interpolator, outputCreator, secondaryCount, secondarySelector, name ?? $"Join({interpolator})")
         {
         }
     }

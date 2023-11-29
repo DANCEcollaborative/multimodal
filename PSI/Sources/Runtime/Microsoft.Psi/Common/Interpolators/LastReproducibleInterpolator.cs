@@ -14,13 +14,14 @@ namespace Microsoft.Psi.Common.Interpolators
     /// <remarks>The interpolator results do not depend on the wall-clock time of the messages arriving
     /// on the secondary stream, i.e., they are based on originating times of messages. As a result,
     /// the interpolator might introduce an extra delay as it might have to wait for enough messages on the
-    /// secondary stream to proove that the interpolation result is correct, irrespective of any other messages
+    /// secondary stream to prove that the interpolation result is correct, irrespective of any other messages
     /// that might arrive later.</remarks>
     public sealed class LastReproducibleInterpolator<T> : ReproducibleInterpolator<T>
     {
         private readonly RelativeTimeInterval relativeTimeInterval;
         private readonly bool orDefault;
         private readonly T defaultValue;
+        private readonly string name;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="LastReproducibleInterpolator{T}"/> class.
@@ -33,6 +34,9 @@ namespace Microsoft.Psi.Common.Interpolators
             this.relativeTimeInterval = relativeTimeInterval;
             this.orDefault = orDefault;
             this.defaultValue = defaultValue;
+            this.name =
+                (this.orDefault ? $"{nameof(Reproducible)}.{nameof(Available.LastOrDefault)}" : $"{nameof(Reproducible)}.{nameof(Available.Last)}") +
+                this.relativeTimeInterval.ToString();
         }
 
         /// <inheritdoc/>
@@ -57,7 +61,7 @@ namespace Microsoft.Psi.Common.Interpolators
                 }
             }
 
-            // Look for the last match that's stil within the window
+            // Look for the last match that's still within the window
             Message<T> lastMatchingMessage = default;
             bool found = false;
 
@@ -116,8 +120,8 @@ namespace Microsoft.Psi.Common.Interpolators
                 }
             }
 
-            // If we arrive here, it means we did not find a last message in the lookup window,
-            // which also means there is no message in the loopkup window.
+            // If we arrive here, it means we did not find a last message in the lookback window,
+            // which also means there is no message in the lookback window.
 
             // If the stream was closed or last message is at or past the upper search bound,
             if (closedOriginatingTime.HasValue || lastMessageIsOutsideWindowEnd)
@@ -135,5 +139,8 @@ namespace Microsoft.Psi.Common.Interpolators
                 return InterpolationResult<T>.InsufficientData();
             }
         }
+
+        /// <inheritdoc/>
+        public override string ToString() => this.name;
     }
 }

@@ -12,8 +12,6 @@ namespace Microsoft.Psi.Serialization
     /// <typeparam name="T">The value type this serializer knows how to handle.</typeparam>
     internal sealed class StructSerializer<T> : ISerializer<T>
     {
-        private const int Version = 1;
-
         // we use delegates (instead of generating a full class) because dynamic delegates (unlike dynamic types)
         // can access the private fields of the target type.
         private SerializeDelegate<T> serializeImpl;
@@ -21,9 +19,12 @@ namespace Microsoft.Psi.Serialization
         private CloneDelegate<T> cloneImpl;
         private ClearDelegate<T> clearImpl;
 
+        /// <inheritdoc />
+        public bool? IsClearRequired => null; // depends on the generated implementation
+
         public TypeSchema Initialize(KnownSerializers serializers, TypeSchema targetSchema)
         {
-            var runtimeSchema = TypeSchema.FromType(typeof(T), serializers.RuntimeVersion, this.GetType(), Version);
+            var runtimeSchema = TypeSchema.FromType(typeof(T), this.GetType().AssemblyQualifiedName, serializers.RuntimeInfo.SerializationSystemVersion);
             var members = runtimeSchema.GetCompatibleMemberSet(targetSchema);
 
             this.serializeImpl = Generator.GenerateSerializeMethod<T>(il => Generator.EmitSerializeFields(typeof(T), serializers, il, members));

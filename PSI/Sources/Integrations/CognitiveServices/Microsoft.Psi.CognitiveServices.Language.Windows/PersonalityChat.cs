@@ -9,7 +9,7 @@ namespace Microsoft.Psi.CognitiveServices.Language
     using Microsoft.Psi.Components;
 
     /// <summary>
-    /// Component that generates dialogue responses to textual inputs using the <a href="https://labs.cognitive.microsoft.com/en-us/project-personality-chat">Microsoft Cognitive Services Personality Chat API</a>.
+    /// Component that generates dialog responses to textual inputs using the <a href="https://labs.cognitive.microsoft.com/en-us/project-personality-chat">Microsoft Cognitive Services Personality Chat API</a>.
     /// </summary>
     /// <remarks>
     /// The component takes in text-based phrases or utterances on its input stream and generates
@@ -31,8 +31,9 @@ namespace Microsoft.Psi.CognitiveServices.Language
         /// </summary>
         /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="configuration">The configuration parameters.</param>
-        public PersonalityChat(Pipeline pipeline, PersonalityChatConfiguration configuration)
-            : base(pipeline)
+        /// <param name="name">An optional name for the component.</param>
+        public PersonalityChat(Pipeline pipeline, PersonalityChatConfiguration configuration, string name = nameof(PersonalityChat))
+            : base(pipeline, name)
         {
             this.configuration = configuration;
             var personalityChatOptions = new PersonalityChatOptions(configuration.PersonalityChatSubscriptionID, PersonalityChatPersona.Professional);

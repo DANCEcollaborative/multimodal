@@ -115,7 +115,7 @@ namespace Microsoft.Psi
 
             this.inner.Release();
 #if TRACKLEAKS
-            StringBuilder sb = new StringBuilder("\\psi output **********************************************");
+            var sb = new StringBuilder("\\psi output **********************************************");
             sb.AppendLine();
             sb.AppendLine($"A shared resource of type {typeof(T).FullName} was not explicitly released and has been garbage-collected. It should be released by calling Dispose instead.");
             if (this.constructorStackTrace != null)
@@ -153,7 +153,9 @@ namespace Microsoft.Psi
                 e.AddHistory("Instance created", this.constructorStackTrace);
                 e.AddHistory("Instance disposed", this.disposeStackTrace);
 #endif
+#pragma warning disable CA1065 // Do not raise exceptions in unexpected locations
                 throw e;
+#pragma warning restore CA1065 // Do not raise exceptions in unexpected locations
             }
 #if TRACKLEAKS
             else
@@ -173,17 +175,16 @@ namespace Microsoft.Psi
         /// <returns>Shared resource.</returns>
         public Shared<T> AddRef()
         {
-            Shared<T> sh = new Shared<T>();
-            sh.inner = this.inner;
+            var shared = new Shared<T>
+            {
+                inner = this.inner,
+            };
             this.inner.AddRef();
-            return sh;
+            return shared;
         }
 
         /// <inheritdoc/>
-        public override string ToString()
-        {
-            return this.ToString(string.Empty, CultureInfo.CurrentCulture);
-        }
+        public override string ToString() => this.ToString(string.Empty, CultureInfo.CurrentCulture);
 
         /// <inheritdoc/>
         public string ToString(string format, IFormatProvider formatProvider)
@@ -207,16 +208,27 @@ namespace Microsoft.Psi
         // This is done to avoid keeping a reference to an object that is still in use.
         private class CustomSerializer : ISerializer<Shared<T>>
         {
-            public const int Version = 2;
+            public const int LatestSchemaVersion = 2;
             private SerializationHandler<SharedContainer<T>> handler;
+
+            /// <inheritdoc />
+            public bool? IsClearRequired => true;
 
             public TypeSchema Initialize(KnownSerializers serializers, TypeSchema targetSchema)
             {
                 this.handler = serializers.GetHandler<SharedContainer<T>>();
-                var type = this.GetType();
-                var name = TypeSchema.GetContractName(type, serializers.RuntimeVersion);
+                var type = typeof(Shared<T>);
+                var name = TypeSchema.GetContractName(type, serializers.RuntimeInfo.SerializationSystemVersion);
                 var innerMember = new TypeMemberSchema("inner", typeof(SharedContainer<T>).AssemblyQualifiedName, true);
-                var schema = new TypeSchema(name, TypeSchema.GetId(name), type.AssemblyQualifiedName, TypeFlags.IsClass, new TypeMemberSchema[] { innerMember }, Version);
+                var schema = new TypeSchema(
+                    type.AssemblyQualifiedName,
+                    TypeFlags.IsClass,
+                    new TypeMemberSchema[] { innerMember },
+                    name,
+                    TypeSchema.GetId(name),
+                    LatestSchemaVersion,
+                    this.GetType().AssemblyQualifiedName,
+                    serializers.RuntimeInfo.SerializationSystemVersion);
                 return targetSchema ?? schema;
             }
 

@@ -10,8 +10,8 @@ namespace Microsoft.Psi.Audio
     /// </summary>
     public sealed class FrequencyDomainEnergy : ConsumerProducer<float[], float>
     {
-        private int start;
-        private int end;
+        private readonly int start;
+        private readonly int end;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="FrequencyDomainEnergy"/> class.
@@ -19,8 +19,9 @@ namespace Microsoft.Psi.Audio
         /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="start">The starting frequency of the band.</param>
         /// <param name="end">The ending frequency of the band.</param>
-        public FrequencyDomainEnergy(Pipeline pipeline, int start, int end)
-            : base(pipeline)
+        /// <param name="name">An optional name for this component.</param>
+        public FrequencyDomainEnergy(Pipeline pipeline, int start, int end, string name = nameof(FrequencyDomainEnergy))
+            : base(pipeline, name)
         {
             this.start = start;
             this.end = end;

@@ -10,30 +10,31 @@ namespace Microsoft.Psi.Persistence
 
     internal class MetadataCache : IDisposable
     {
-        private readonly object syncRoot = new object();
+        private readonly object syncRoot = new ();
         private readonly string name;
         private readonly string path;
-        private volatile Dictionary<string, PsiStreamMetadata> streamDescriptors = new Dictionary<string, PsiStreamMetadata>();
-        private volatile Dictionary<int, PsiStreamMetadata> streamDescriptorsById = new Dictionary<int, PsiStreamMetadata>();
+        private readonly Action<IEnumerable<Metadata>, RuntimeInfo> entriesAdded;
+        private volatile Dictionary<string, PsiStreamMetadata> streamDescriptors = new ();
+        private volatile Dictionary<int, PsiStreamMetadata> streamDescriptorsById = new ();
         private InfiniteFileReader catalogReader;
-        private TimeInterval activeTimeRange;
-        private TimeInterval originatingTimeRange;
-        private Action<IEnumerable<Metadata>, RuntimeInfo> entriesAdded;
-        private RuntimeInfo runtimeVersion;
+        private TimeInterval messageCreationTimeInterval;
+        private TimeInterval messageOriginatingTimeInterval;
+        private TimeInterval streamTimeInterval;
+        private RuntimeInfo runtimeInfo;
 
         public MetadataCache(string name, string path, Action<IEnumerable<Metadata>, RuntimeInfo> entriesAdded)
         {
             this.name = name;
             this.path = path;
-            this.catalogReader = new InfiniteFileReader(path, StoreCommon.GetCatalogFileName(name));
+            this.catalogReader = new InfiniteFileReader(path, PsiStoreCommon.GetCatalogFileName(name));
             this.entriesAdded = entriesAdded;
 
             // assume v0 for backwards compat. Update will fix this up if the file is newer.
-            this.runtimeVersion = new RuntimeInfo(0);
+            this.runtimeInfo = new RuntimeInfo(0);
             this.Update();
         }
 
-        public RuntimeInfo RuntimeVersion => this.runtimeVersion;
+        public RuntimeInfo RuntimeInfo => this.runtimeInfo;
 
         public IEnumerable<PsiStreamMetadata> AvailableStreams
         {
@@ -44,21 +45,30 @@ namespace Microsoft.Psi.Persistence
             }
         }
 
-        public TimeInterval ActiveTimeInterval
+        public TimeInterval MessageCreationTimeInterval
         {
             get
             {
                 this.Update();
-                return this.activeTimeRange;
+                return this.messageCreationTimeInterval;
             }
         }
 
-        public TimeInterval OriginatingTimeInterval
+        public TimeInterval MessageOriginatingTimeInterval
         {
             get
             {
                 this.Update();
-                return this.originatingTimeRange;
+                return this.messageOriginatingTimeInterval;
+            }
+        }
+
+        public TimeInterval StreamTimeInterval
+        {
+            get
+            {
+                this.Update();
+                return this.streamTimeInterval;
             }
         }
 
@@ -122,7 +132,7 @@ namespace Microsoft.Psi.Persistence
                     if (meta.Kind == MetadataKind.RuntimeInfo)
                     {
                         // we expect this to be first in the file (or completely missing in v0 files)
-                        this.runtimeVersion = meta as RuntimeInfo;
+                        this.runtimeInfo = meta as RuntimeInfo;
 
                         // Need to review this. The issue was that the RemoteExporter is not writing
                         // out the RuntimeInfo to the stream. This causes the RemoteImporter side of things to
@@ -138,8 +148,8 @@ namespace Microsoft.Psi.Persistence
                         if (meta.Kind == MetadataKind.StreamMetadata)
                         {
                             var sm = meta as PsiStreamMetadata;
-                            sm.PartitionName = this.name;
-                            sm.PartitionPath = this.path;
+                            sm.StoreName = this.name;
+                            sm.StorePath = this.path;
 
                             // the same meta entry will appear multiple times (written on open and on close).
                             // The last one wins.
@@ -150,11 +160,12 @@ namespace Microsoft.Psi.Persistence
                 }
 
                 // compute the time ranges
-                this.activeTimeRange = GetTimeRange(newStreamDescriptors.Values, meta => meta.ActiveLifetime);
-                this.originatingTimeRange = GetTimeRange(newStreamDescriptors.Values, meta => meta.OriginatingLifetime);
+                this.messageCreationTimeInterval = GetTimeRange(newStreamDescriptors.Values, meta => meta.MessageCreationTimeInterval);
+                this.messageOriginatingTimeInterval = GetTimeRange(newStreamDescriptors.Values, meta => meta.MessageOriginatingTimeInterval);
+                this.streamTimeInterval = GetTimeRange(newStreamDescriptors.Values, meta => meta.StreamTimeInterval);
 
                 // clean up if the catalog is closed and we really reached the end
-                if (!this.catalogReader.IsMoreDataExpected() && !this.catalogReader.HasMoreData())
+                if (!PsiStoreMonitor.IsStoreLive(this.name, this.path) && !this.catalogReader.HasMoreData())
                 {
                     this.catalogReader.Dispose();
                     this.catalogReader = null;
@@ -167,7 +178,7 @@ namespace Microsoft.Psi.Persistence
                 // let the registered delegates know about the change
                 if (newMetadata.Count > 0 && this.entriesAdded != null)
                 {
-                    this.entriesAdded(newMetadata, this.runtimeVersion);
+                    this.entriesAdded(newMetadata, this.runtimeInfo);
                 }
             }
         }

@@ -12,6 +12,7 @@ namespace Microsoft.Psi.Diagnostics
     internal class DiagnosticsSampler : ISourceComponent, IDisposable
     {
         private readonly Pipeline pipeline;
+        private readonly string name;
         private readonly DiagnosticsCollector collector;
         private Time.TimerDelegate timerDelegate;
         private bool running;
@@ -20,14 +21,16 @@ namespace Microsoft.Psi.Diagnostics
         /// <summary>
         /// Initializes a new instance of the <see cref="DiagnosticsSampler"/> class.
         /// </summary>
-        /// <param name="pipeline">Pipeline to which this component belongs.</param>
+        /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="collector">Diagnostics collector.</param>
-        /// <param name="config">Diagnostics configuration.</param>
-        public DiagnosticsSampler(Pipeline pipeline, DiagnosticsCollector collector, DiagnosticsConfiguration config)
+        /// <param name="configuration">Diagnostics configuration.</param>
+        /// <param name="name">An optional name for the component.</param>
+        public DiagnosticsSampler(Pipeline pipeline, DiagnosticsCollector collector, DiagnosticsConfiguration configuration, string name = nameof(DiagnosticsSampler))
         {
             this.pipeline = pipeline;
+            this.name = name;
             this.collector = collector;
-            this.Config = config;
+            this.Config = configuration;
             this.Diagnostics = pipeline.CreateEmitter<PipelineDiagnostics>(this, nameof(this.Diagnostics));
         }
 
@@ -78,6 +81,9 @@ namespace Microsoft.Psi.Diagnostics
             this.Stop();
             notifyCompleted();
         }
+
+        /// <inheritdoc />
+        public override string ToString() => this.name;
 
         private void Stop()
         {

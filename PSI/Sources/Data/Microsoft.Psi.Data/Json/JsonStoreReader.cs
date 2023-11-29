@@ -18,11 +18,11 @@ namespace Microsoft.Psi.Data.Json
     {
         private readonly List<JsonStreamMetadata> catalog = null;
         private readonly List<int> enabledStreams = new List<int>();
+        private readonly TimeInterval originatingTimeInterval;
 
-        private TimeInterval originatingTimeInterval;
         private ReplayDescriptor descriptor = ReplayDescriptor.ReplayAll;
         private bool hasMoreData = false;
-        private Envelope envelope = default(Envelope);
+        private Envelope envelope = default;
         private JToken data = null;
         private StreamReader streamReader = null;
         private JsonReader jsonReader = null;
@@ -37,10 +37,11 @@ namespace Microsoft.Psi.Data.Json
             : base(extension)
         {
             this.Name = name;
-            this.Path = StoreCommon.GetPathToLatestVersion(name, path);
+            this.Path = PsiStore.GetPathToLatestVersion(name, path);
 
             // load catalog
-            string metadataPath = System.IO.Path.Combine(this.Path, StoreCommon.GetCatalogFileName(this.Name) + this.Extension);
+            string metadataPath = System.IO.Path.Combine(this.Path, PsiStoreCommon.GetCatalogFileName(this.Name) + this.Extension);
+            this.Size = new FileInfo(metadataPath).Length;
             using (var file = File.OpenText(metadataPath))
             using (var reader = new JsonTextReader(file))
             {
@@ -62,9 +63,14 @@ namespace Microsoft.Psi.Data.Json
         public IEnumerable<JsonStreamMetadata> AvailableStreams => this.catalog;
 
         /// <summary>
-        /// Gets the orginating time interval (earliest to latest) of the messages in the data store.
+        /// Gets the originating time interval (earliest to latest) of the messages in the data store.
         /// </summary>
         public TimeInterval OriginatingTimeInterval => this.originatingTimeInterval;
+
+        /// <summary>
+        /// Gets the size of the json store.
+        /// </summary>
+        public long Size { get; }
 
         /// <summary>
         /// Closes the specified stream.
@@ -113,6 +119,7 @@ namespace Microsoft.Psi.Data.Json
         {
             this.streamReader?.Dispose();
             this.streamReader = null;
+            this.jsonReader?.Close();
             this.jsonReader = null;
         }
 
@@ -267,7 +274,7 @@ namespace Microsoft.Psi.Data.Json
             this.descriptor = descriptor;
 
             // load data
-            string dataPath = System.IO.Path.Combine(this.Path, StoreCommon.GetDataFileName(this.Name) + this.Extension);
+            string dataPath = System.IO.Path.Combine(this.Path, PsiStoreCommon.GetDataFileName(this.Name) + this.Extension);
             this.streamReader?.Dispose();
             this.streamReader = File.OpenText(dataPath);
             this.jsonReader = new JsonTextReader(this.streamReader);
@@ -310,7 +317,7 @@ namespace Microsoft.Psi.Data.Json
         private bool ReadEnvelope(out Envelope envelope)
         {
             this.hasMoreData = this.jsonReader.TokenType == JsonToken.PropertyName && string.Equals(this.jsonReader.Value, "Envelope") && this.jsonReader.Read();
-            envelope = this.hasMoreData ? this.Serializer.Deserialize<Envelope>(this.jsonReader) : default(Envelope);
+            envelope = this.hasMoreData ? this.Serializer.Deserialize<Envelope>(this.jsonReader) : default;
             if (this.hasMoreData)
             {
                 var metadata = this.catalog.FirstOrDefault(m => m.Id == this.envelope.SourceId);

@@ -14,13 +14,14 @@ namespace Microsoft.Psi.Common.Interpolators
     /// <remarks>The interpolator results do not depend on the wall-clock time of the messages arriving
     /// on the secondary stream, i.e., they are based on originating times of messages. As a result,
     /// the interpolator might introduce an extra delay as it might have to wait for enough messages on the
-    /// secondary stream to proove that the interpolation result is correct, irrespective of any other messages
+    /// secondary stream to prove that the interpolation result is correct, irrespective of any other messages
     /// that might arrive later.</remarks>
     public sealed class NearestReproducibleInterpolator<T> : ReproducibleInterpolator<T>
     {
         private readonly RelativeTimeInterval relativeTimeInterval;
         private readonly bool orDefault;
         private readonly T defaultValue;
+        private readonly string name;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="NearestReproducibleInterpolator{T}"/> class.
@@ -33,6 +34,17 @@ namespace Microsoft.Psi.Common.Interpolators
             this.relativeTimeInterval = relativeTimeInterval;
             this.orDefault = orDefault;
             this.defaultValue = defaultValue;
+
+            if (this.relativeTimeInterval == RelativeTimeInterval.Zero)
+            {
+                this.name = this.orDefault ? $"{nameof(Reproducible)}.{nameof(Reproducible.ExactOrDefault)}" : $"{nameof(Reproducible)}.{nameof(Reproducible.Exact)}";
+            }
+            else
+            {
+                this.name =
+                    (this.orDefault ? $"{nameof(Reproducible)}.{nameof(Reproducible.NearestOrDefault)}" : $"{nameof(Reproducible)}.{nameof(Reproducible.Nearest)}") +
+                    this.relativeTimeInterval.ToString();
+            }
         }
 
         /// <inheritdoc/>
@@ -144,5 +156,8 @@ namespace Microsoft.Psi.Common.Interpolators
                 return InterpolationResult<T>.InsufficientData();
             }
         }
+
+        /// <inheritdoc/>
+        public override string ToString() => this.name;
     }
 }

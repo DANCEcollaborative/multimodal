@@ -26,10 +26,10 @@ namespace Microsoft.Psi.Common
         /// </summary>
         public static readonly int ElementSize = BufferEx.SizeOf<T>();
 
+        private readonly bool isReadOnly;
         private IntPtr data;
         private int length;
         private bool ownsMemory;
-        private bool isReadOnly;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="UnmanagedArray{T}"/> class from an existing allocation.
@@ -86,7 +86,7 @@ namespace Microsoft.Psi.Common
         /// <summary>
         /// Gets the number of elements in the array.
         /// </summary>
-        int ICollection<T>.Count => this.length;
+        public int Count => this.length;
 
         /// <summary>
         /// Gets the size of the allocated memory, in bytes.
@@ -96,7 +96,7 @@ namespace Microsoft.Psi.Common
         /// <summary>
         /// Gets a value indicating whether the array can be modified or not.
         /// </summary>
-        bool ICollection<T>.IsReadOnly => this.isReadOnly;
+        public bool IsReadOnly => this.isReadOnly;
 
         /// <summary>
         /// Gets or sets the value of the element at the specified index.
@@ -110,7 +110,7 @@ namespace Microsoft.Psi.Common
             {
                 if (index < 0 || index > this.length)
                 {
-                    throw new IndexOutOfRangeException();
+                    throw new ArgumentException();
                 }
 
                 return MemoryAccess.ReadValue<T>(this.data + (index * ElementSize));
@@ -312,7 +312,7 @@ namespace Microsoft.Psi.Common
         /// <param name="index">The index in the destination array at which copying begins.</param>
         public void CopyTo(UnmanagedArray<T> destination, int index)
         {
-            this.CopyTo(destination, 0, 0, this.length);
+            this.CopyTo(destination, 0, index, this.length);
         }
 
         /// <summary>
@@ -458,7 +458,7 @@ namespace Microsoft.Psi.Common
         }
 
         /// <inheritdoc />
-        IEnumerator<T> IEnumerable<T>.GetEnumerator()
+        public IEnumerator<T> GetEnumerator()
         {
             return new UnmanagedEnumerator(this);
         }
@@ -525,16 +525,27 @@ namespace Microsoft.Psi.Common
         // serializer compatible with T[]
         private class CustomSerializer : ISerializer<UnmanagedArray<T>>
         {
-            private const int Version = 1;
+            private const int LatestSchemaVersion = 1;
+
+            /// <inheritdoc />
+            public bool? IsClearRequired => false;
 
             public TypeSchema Initialize(KnownSerializers serializers, TypeSchema targetSchema)
             {
                 serializers.GetHandler<T>(); // register element type
 
                 var type = typeof(T[]);
-                var name = TypeSchema.GetContractName(type, serializers.RuntimeVersion);
+                var name = TypeSchema.GetContractName(type, serializers.RuntimeInfo.SerializationSystemVersion);
                 var elementsMember = new TypeMemberSchema("Elements", typeof(T).AssemblyQualifiedName, true);
-                var schema = new TypeSchema(name, TypeSchema.GetId(name), type.AssemblyQualifiedName, TypeFlags.IsCollection, new TypeMemberSchema[] { elementsMember }, Version);
+                var schema = new TypeSchema(
+                    type.AssemblyQualifiedName,
+                    TypeFlags.IsCollection,
+                    new TypeMemberSchema[] { elementsMember },
+                    name,
+                    TypeSchema.GetId(name),
+                    LatestSchemaVersion,
+                    this.GetType().AssemblyQualifiedName,
+                    serializers.RuntimeInfo.SerializationSystemVersion);
                 return targetSchema ?? schema;
             }
 

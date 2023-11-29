@@ -5,7 +5,6 @@ namespace Microsoft.Psi.Persistence
 {
     using System;
     using System.Collections.Generic;
-    using System.Linq;
     using System.Threading;
 
     /// <summary>
@@ -42,14 +41,12 @@ namespace Microsoft.Psi.Persistence
 
         public int CurrentMessageStart => this.fileReader.CurrentBlockStart;
 
-        public bool IsMoreDataExpected() => this.fileReader.IsMoreDataExpected();
-
         public void Seek(int extentId, int position)
         {
             this.fileReader.Seek(extentId, position);
         }
 
-        public bool MoveNext(IEnumerable<int> ids)
+        public bool MoveNext(HashSet<int> ids)
         {
             bool hasData = this.MoveNext();
             while (hasData && !ids.Contains(this.currentEnvelope.SourceId))
@@ -89,7 +86,7 @@ namespace Microsoft.Psi.Persistence
 
         public void Dispose()
         {
-            this.fileReader.Dispose();
+            this.fileReader?.Dispose();
             this.fileReader = null;
         }
     }

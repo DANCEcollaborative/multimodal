@@ -61,7 +61,9 @@ namespace Test.Psi
         // serializer that skips one property
         public class TestCustomSerializer : ISerializer<TypeWithPolymorphicField>
         {
-            public int Version => throw new NotImplementedException();
+            public int Version => throw new NotSupportedException();
+
+            public bool? IsClearRequired => false;
 
             public TypeSchema Initialize(KnownSerializers serializers, TypeSchema targetSchema)
             {

@@ -23,6 +23,7 @@ namespace Microsoft.Psi.Audio
     public sealed class AudioCapture : IProducer<AudioBuffer>, ISourceComponent, IDisposable
     {
         private readonly Pipeline pipeline;
+        private readonly string name;
 
         /// <summary>
         /// The configuration for this component.
@@ -59,12 +60,14 @@ namespace Microsoft.Psi.Audio
         /// </summary>
         /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="configuration">The component configuration.</param>
-        public AudioCapture(Pipeline pipeline, AudioCaptureConfiguration configuration)
+        /// <param name="name">An optional name for the component.</param>
+        public AudioCapture(Pipeline pipeline, AudioCaptureConfiguration configuration, string name = nameof(AudioCapture))
         {
             this.pipeline = pipeline;
+            this.name = name;
             this.configuration = configuration;
             this.audioBuffers = pipeline.CreateEmitter<AudioBuffer>(this, "AudioBuffers");
-            this.AudioLevelInput = pipeline.CreateReceiver<double>(this, this.SetAudioLevel, nameof(this.AudioLevelInput), true);
+            this.AudioLevelInput = pipeline.CreateReceiver<double>(this, this.SetAudioLevel, nameof(this.AudioLevelInput));
             this.AudioLevel = pipeline.CreateEmitter<double>(this, nameof(this.AudioLevel));
 
             this.wasapiCapture = new WasapiCapture();
@@ -81,10 +84,24 @@ namespace Microsoft.Psi.Audio
         /// </summary>
         /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="configurationFilename">The component configuration file.</param>
-        public AudioCapture(Pipeline pipeline, string configurationFilename = null)
+        /// <param name="name">An optional name for the component.</param>
+        public AudioCapture(Pipeline pipeline, string configurationFilename = null, string name = nameof(AudioCapture))
             : this(
                 pipeline,
-                (configurationFilename == null) ? new AudioCaptureConfiguration() : new ConfigurationHelper<AudioCaptureConfiguration>(configurationFilename).Configuration)
+                (configurationFilename == null) ? new AudioCaptureConfiguration() : new ConfigurationHelper<AudioCaptureConfiguration>(configurationFilename).Configuration,
+                name)
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="AudioCapture"/> class with a specified output format and device name.
+        /// </summary>
+        /// <param name="pipeline">The pipeline to add the component to.</param>
+        /// <param name="outputFormat">The output format to use.</param>
+        /// <param name="deviceName">The name of the audio device.</param>
+        /// <param name="name">An optional name for the component.</param>
+        public AudioCapture(Pipeline pipeline, WaveFormat outputFormat, string deviceName = null, string name = nameof(AudioCapture))
+            : this(pipeline, new AudioCaptureConfiguration() { Format = outputFormat, DeviceName = deviceName }, name)
         {
         }
 
@@ -137,11 +154,11 @@ namespace Microsoft.Psi.Audio
         /// Sets the audio level.
         /// </summary>
         /// <param name="level">The audio level.</param>
-        public void SetAudioLevel(Message<double> level)
+        public void SetAudioLevel(double level)
         {
             if (this.wasapiCapture != null)
             {
-                this.wasapiCapture.AudioLevel = level.Data;
+                this.wasapiCapture.AudioLevel = level;
             }
         }
 
@@ -173,11 +190,11 @@ namespace Microsoft.Psi.Audio
             this.wasapiCapture.AudioVolumeNotification += this.HandleAudioVolumeNotification;
 
             // tell the audio device to start capturing audio
-            this.wasapiCapture.StartCapture(this.Configuration.TargetLatencyInMs, this.Configuration.AudioEngineBufferInMs, this.Configuration.Gain, this.Configuration.OutputFormat, this.Configuration.OptimizeForSpeech, this.Configuration.UseEventDrivenCapture);
+            this.wasapiCapture.StartCapture(this.Configuration.TargetLatencyInMs, this.Configuration.AudioEngineBufferInMs, this.Configuration.Gain, this.Configuration.Format, this.Configuration.OptimizeForSpeech, this.Configuration.UseEventDrivenCapture);
 
             // Get the actual capture format. This should normally match the configured output format,
             // unless that was null in which case the native device capture format is returned.
-            this.sourceFormat = this.Configuration.OutputFormat ?? this.wasapiCapture.MixFormat;
+            this.sourceFormat = this.Configuration.Format ?? this.wasapiCapture.MixFormat;
         }
 
         /// <inheritdoc/>
@@ -186,6 +203,9 @@ namespace Microsoft.Psi.Audio
             notifyCompleted();
             this.sourceFormat = null;
         }
+
+        /// <inheritdoc/>
+        public override string ToString() => this.name;
 
         /// <summary>
         /// The event handler that processes new audio data packets.

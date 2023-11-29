@@ -1,0 +1,214 @@
+﻿<!-- Copyright (c) Microsoft Corporation. All rights reserved.
+     Licensed under the MIT License. -->
+
+<views:VisualizationPanelView
+    x:Class="Microsoft.Psi.Visualization.Views.TimelineVisualizationPanelView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:cmd="http://www.galasoft.ch/mvvmlight"
+    xmlns:ctrls="clr-namespace:Microsoft.Psi.Visualization.Controls"
+    xmlns:conv="clr-namespace:Microsoft.Psi.Visualization.Converters"
+    xmlns:views="clr-namespace:Microsoft.Psi.Visualization.Views"
+    xmlns:i="clr-namespace:System.Windows.Interactivity;assembly=System.Windows.Interactivity"
+    mc:Ignorable="d" 
+    d:DesignHeight="300"
+    d:DesignWidth="300"
+    Height="{Binding Height}"
+    IsHitTestVisible="True">
+
+    <views:VisualizationPanelView.Resources>
+        <conv:ColorConverter x:Key="ColorConverter" />
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <conv:IconUriConverter x:Key="IconUriConverter" />
+    </views:VisualizationPanelView.Resources>
+
+    <Grid x:Name="Root" MouseMove="Root_MouseMove" ClipToBounds="True" Background="{x:Null}">
+
+        <ctrls:TimelineScroller Navigator="{Binding Navigator}" IsHitTestVisible="True" Background="{Binding BackgroundColor, Converter={StaticResource ColorToSolidColorBrushConverter}}">
+            <ItemsControl ItemsSource="{Binding VisualizationObjects}" Background="{x:Null}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <Grid />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                            <ContentPresenter ContentTemplate="{Binding DefaultViewTemplate}" Visibility="{Binding Visible, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Threshold rectangle -->
+            <Rectangle
+                StrokeThickness="0"
+                Fill="{Binding BackgroundColor, Converter={StaticResource ColorToSolidColorBrushConverter}}"
+                Margin="0"
+                Height="{Binding ThresholdRectangleHeight}"
+                Opacity="{Binding ThresholdRectangleOpacity}"
+                VerticalAlignment="{Binding ThresholdRectangleVerticalAlignment}"
+                Visibility="{Binding ThresholdRectangleVisibility}"/>
+
+            <views:TimelineView DataContext="{Binding Navigator}" SelectionRegionBrush="{StaticResource SelectionRegionBrush}" ShowTicks="{Binding ElementName=Root, Path=DataContext.ShowTimeTicks}"/>
+
+            <DataGrid
+                AutomationProperties.Name="Legend"
+                ItemsSource="{Binding VisualizationObjects}"
+                Visibility="{Binding ShowLegend, Converter={StaticResource BoolToVisibilityConverter}}"
+                Background="{x:Null}"
+                Margin="5"
+                BorderThickness="1"
+                BorderBrush="{StaticResource LightBorderColorBrush}"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                GridLinesVisibility="None"
+                AutoGenerateColumns="False"
+                HeadersVisibility="None"
+                SelectionMode="Single"
+                SelectionUnit="FullRow"
+                CanUserAddRows="False"
+                EnableRowVirtualization="False">
+
+                <DataGrid.CellStyle>
+                    <Style TargetType="DataGridCell">
+                        <Setter Property="Background" Value="{StaticResource DarkBackgroundColorBrush}"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                    </Style>
+                </DataGrid.CellStyle>
+
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Width="Auto">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Name, Mode=OneWay}" Foreground="{Binding LegendColor, Converter={StaticResource ColorConverter}}" HorizontalAlignment="Right" Margin="3, 0, 0, 0"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTemplateColumn Width="Auto">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text=":" Foreground="{Binding LegendColor, Converter={StaticResource ColorConverter}}" HorizontalAlignment="Center"></TextBlock>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTemplateColumn Width="Auto">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding LegendValue, Mode=OneWay}" Foreground="{Binding LegendColor, Converter={StaticResource ColorConverter}}" HorizontalAlignment="Left" Margin="0,0,3,3"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <Border BorderThickness="1">
+                <Border.Style>
+                    <Style>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsCurrentPanel}" Value="False">
+                                <Setter Property="Control.BorderBrush" Value="{StaticResource LightBorderColorBrush}"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsCurrentPanel}" Value="True">
+                                <Setter Property="Control.BorderBrush" Value="{StaticResource CursorBrush}"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+            </Border>
+
+            <Button 
+                Command="{Binding ToggleVisibilityCommand}"
+                Background="{Binding BackgroundColor, Converter={StaticResource ColorToSolidColorBrushConverter}}"
+                Height="16"
+                Width="16"
+                VerticalAlignment="Top"
+                HorizontalAlignment="Right"
+                ToolTip="Hide panel"
+                Margin="4,4,22,4">
+                <Image Source="{Binding ., Converter={StaticResource IconUriConverter}, ConverterParameter=panel-showhide-smallbutton-faded.png}"/>
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsMouseOver, ElementName=Root}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsMouseOver, ElementName=Root}" Value="False">
+                                <Setter Property="Visibility" Value="Hidden" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+
+            <Button 
+                Command="{Binding RemovePanelCommand}"
+                Background="{Binding BackgroundColor, Converter={StaticResource ColorToSolidColorBrushConverter}}"
+                Height="16"
+                Width="16"
+                VerticalAlignment="Top"
+                HorizontalAlignment="Right"
+                ToolTip="Remove panel"
+                Margin="4,4,4,4">
+                <Image Source="{Binding ., Converter={StaticResource IconUriConverter}, ConverterParameter=remove-smallbutton-faded.png}"/>
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsMouseOver, ElementName=Root}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsMouseOver, ElementName=Root}" Value="False">
+                                <Setter Property="Visibility" Value="Hidden" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+
+            <Border Name="ReorderThumb" Width="15" Cursor="ScrollNS" VerticalAlignment="Stretch" HorizontalAlignment="Left" MouseMove="ReorderThumb_MouseMove" Background="{StaticResource CursorBrush}">
+                <Border.Style>
+                    <Style TargetType="{x:Type Border}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsMouseOver, ElementName=ReorderThumb}" Value="False">
+                                <Setter Property="Opacity" Value="0"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsMouseOver, ElementName=ReorderThumb}" Value="True">
+                                <Setter Property="Opacity" Value="100"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+            </Border>
+
+            <Thumb Height="3" Cursor="SizeNS" VerticalAlignment="Bottom" HorizontalAlignment="Stretch" Opacity="0">
+                <i:Interaction.Triggers>
+                    <i:EventTrigger EventName="DragDelta">
+                        <cmd:EventToCommand Command="{Binding Path=ResizePanelCommand}" PassEventArgsToCommand="True" />
+                    </i:EventTrigger>
+                </i:Interaction.Triggers>
+            </Thumb>
+
+        </ctrls:TimelineScroller>
+
+        <i:Interaction.Triggers>
+            <i:EventTrigger EventName="MouseLeftButtonDown">
+                <cmd:EventToCommand Command="{Binding Path=MouseLeftButtonDownCommand}" PassEventArgsToCommand="True" />
+            </i:EventTrigger>
+            <i:EventTrigger EventName="MouseRightButtonDown">
+                <cmd:EventToCommand Command="{Binding Path=MouseRightButtonDownCommand}" PassEventArgsToCommand="True" />
+            </i:EventTrigger>
+            <i:EventTrigger EventName="MouseMove">
+                <cmd:EventToCommand Command="{Binding Path=MouseMoveCommand}" PassEventArgsToCommand="True" />
+            </i:EventTrigger>
+            <i:EventTrigger EventName="Loaded">
+                <cmd:EventToCommand Command="{Binding Path=ViewportLoadedCommand}" PassEventArgsToCommand="True" />
+            </i:EventTrigger>
+            <i:EventTrigger EventName="SizeChanged">
+                <cmd:EventToCommand Command="{Binding Path=ViewportSizeChangedCommand}" PassEventArgsToCommand="True" />
+            </i:EventTrigger>
+        </i:Interaction.Triggers>
+    </Grid>
+</views:VisualizationPanelView>

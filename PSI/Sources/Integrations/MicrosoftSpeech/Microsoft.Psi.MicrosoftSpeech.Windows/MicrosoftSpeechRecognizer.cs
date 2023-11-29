@@ -31,6 +31,7 @@ namespace Microsoft.Psi.MicrosoftSpeech
     /// position offset of the recognized audio as reported by the recognition engine to compute an estimate of the originating time. For
     /// partial hypotheses, we use the engine's current offset into the audio stream to estimate the originating time.
     /// </remarks>
+    [Obsolete("The MicrosoftSpeechRecognizer component has been deprecated. Consider using the SystemSpeechRecognizer component available in Microsoft.Psi.Speech.Windows instead.", false)]
     public sealed class MicrosoftSpeechRecognizer : ConsumerProducer<AudioBuffer, IStreamingSpeechRecognitionResult>, ISourceComponent, IDisposable
     {
         /// <summary>
@@ -56,6 +57,11 @@ namespace Microsoft.Psi.MicrosoftSpeech
         private DateTime streamStartTime;
 
         /// <summary>
+        /// Final originating time given upon component being stopped by the pipeline.
+        /// </summary>
+        private DateTime finalOriginatingTime = DateTime.MaxValue;
+
+        /// <summary>
         /// Event to signal that the recognizer has been stopped.
         /// </summary>
         private ManualResetEvent recognizeCompleteManualReset;
@@ -71,10 +77,10 @@ namespace Microsoft.Psi.MicrosoftSpeech
             this.Configuration = configuration ?? new MicrosoftSpeechRecognizerConfiguration();
 
             // create receiver of grammar updates
-            this.ReceiveGrammars = pipeline.CreateReceiver<IEnumerable<string>>(this, this.SetGrammars, nameof(this.ReceiveGrammars), true);
+            this.ReceiveGrammars = pipeline.CreateReceiver<IEnumerable<string>>(this, this.SetGrammars, nameof(this.ReceiveGrammars));
 
             // create receiver of grammar updates by name
-            this.ReceiveGrammarNames = pipeline.CreateReceiver<string[]>(this, this.EnableGrammars, nameof(this.ReceiveGrammarNames), true);
+            this.ReceiveGrammarNames = pipeline.CreateReceiver<string[]>(this, this.EnableGrammars, nameof(this.ReceiveGrammarNames));
 
             // assign the default Out emitter to the RecognitionResults group
             this.originatingTimeConsistencyCheckGroup.Add(this.Out, EmitterGroup.RecognitionResults);
@@ -117,7 +123,7 @@ namespace Microsoft.Psi.MicrosoftSpeech
         /// <summary>
         /// Initializes a new instance of the <see cref="MicrosoftSpeechRecognizer"/> class.
         /// </summary>
-        /// <param name="pipeline">The Psi pipeline.</param>
+        /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="configurationFilename">The name of the configuration file.</param>
         public MicrosoftSpeechRecognizer(Pipeline pipeline, string configurationFilename = null)
             : this(
@@ -199,7 +205,7 @@ namespace Microsoft.Psi.MicrosoftSpeech
         public Emitter<AudioLevelUpdatedEventArgs> AudioLevelUpdated { get; }
 
         /// <summary>
-        /// Gets the output stream of emulate recognize completed completed events.
+        /// Gets the output stream of emulate recognize completed events.
         /// </summary>
         public Emitter<EmulateRecognizeCompletedEventArgs> EmulateRecognizeCompleted { get; }
 
@@ -222,9 +228,9 @@ namespace Microsoft.Psi.MicrosoftSpeech
         /// Replace grammars with given.
         /// </summary>
         /// <param name="srgsXmlGrammars">A collection of XML-format speech grammars that conform to the SRGS 1.0 specification.</param>
-        public void SetGrammars(Message<IEnumerable<string>> srgsXmlGrammars)
+        public void SetGrammars(IEnumerable<string> srgsXmlGrammars)
         {
-            this.speechRecognitionEngine.RequestRecognizerUpdate(srgsXmlGrammars.Data.Select(g =>
+            this.speechRecognitionEngine.RequestRecognizerUpdate(srgsXmlGrammars.Select(g =>
             {
                 using (var xmlReader = XmlReader.Create(new StringReader(g)))
                 {
@@ -237,11 +243,11 @@ namespace Microsoft.Psi.MicrosoftSpeech
         /// Enable all the grammars indicated by name, disabling all others.
         /// </summary>
         /// <param name="grammarNames">Speech grammars.</param>
-        public void EnableGrammars(Message<string[]> grammarNames)
+        public void EnableGrammars(string[] grammarNames)
         {
             foreach (var g in this.speechRecognitionEngine.Grammars)
             {
-                g.Enabled = grammarNames.Data.Contains(g.Name) ? true : false;
+                g.Enabled = grammarNames.Contains(g.Name) ? true : false;
             }
         }
 
@@ -273,6 +279,7 @@ namespace Microsoft.Psi.MicrosoftSpeech
             // Free any other managed objects here.
             this.recognizeCompleteManualReset.Dispose();
             this.recognizeCompleteManualReset = null;
+            this.inputAudioStream.Dispose();
         }
 
         /// <inheritdoc/>
@@ -288,6 +295,12 @@ namespace Microsoft.Psi.MicrosoftSpeech
         /// <inheritdoc/>
         public void Stop(DateTime finalOriginatingTime, Action notifyCompleted)
         {
+            this.finalOriginatingTime = finalOriginatingTime;
+
+            // Wait for final in-progress result to complete
+            this.inputAudioStream.Close();
+            this.recognizeCompleteManualReset.WaitOne(this.Configuration.FinalRecognitionResultTimeoutMs);
+
             // Unregister handlers so they won't fire while disposing.
             this.speechRecognitionEngine.SpeechDetected -= this.OnSpeechDetected;
             this.speechRecognitionEngine.SpeechHypothesized -= this.OnSpeechHypothesized;
@@ -301,14 +314,10 @@ namespace Microsoft.Psi.MicrosoftSpeech
             this.speechRecognitionEngine.EmulateRecognizeCompleted -= this.OnEmulateRecognizeCompleted;
             this.speechRecognitionEngine.LoadGrammarCompleted -= this.OnLoadGrammarCompleted;
 
-            // Close the audio stream first so that RecognizeAyncCancel
-            // will finalize the current recognition operation.
-            this.inputAudioStream.Close();
-
             // Cancel any in-progress recognition and wait for completion
             // (OnRecognizeCompleted) before disposing of recognition engine.
             this.speechRecognitionEngine.RecognizeAsyncCancel();
-            this.recognizeCompleteManualReset.WaitOne(333);
+            this.recognizeCompleteManualReset.WaitOne(this.Configuration.FinalRecognitionResultTimeoutMs);
 
             notifyCompleted();
         }
@@ -517,7 +526,7 @@ namespace Microsoft.Psi.MicrosoftSpeech
         /// originating times.
         /// </summary>
         /// <typeparam name="T">The type of the output stream.</typeparam>
-        /// <param name="pipeline">The pipeline in which this component was created.</param>
+        /// <param name="pipeline">The pipeline to add the component to.</param>
         /// <param name="name">The name of the stream.</param>
         /// <param name="consistencyCheckGroup">The group in which to create the stream.</param>
         /// <returns>The newly created emitter for the stream.</returns>
@@ -555,8 +564,11 @@ namespace Microsoft.Psi.MicrosoftSpeech
             }
 
             // Post the message and update the originating time for this stream
-            stream.Post(data, originatingTime);
-            this.lastPostedOriginatingTimes[group] = originatingTime;
+            if (originatingTime <= this.finalOriginatingTime)
+            {
+                stream.Post(data, originatingTime);
+                this.lastPostedOriginatingTimes[group] = originatingTime;
+            }
         }
 
         /// <summary>

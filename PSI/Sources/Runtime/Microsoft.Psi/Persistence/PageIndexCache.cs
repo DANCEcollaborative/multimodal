@@ -6,16 +6,19 @@ namespace Microsoft.Psi.Persistence
     using System;
     using System.Collections.Generic;
     using System.Threading;
+    using Microsoft.Psi.Data;
 
     internal class PageIndexCache : IDisposable
     {
         private readonly object syncRoot = new object();
+        private readonly string name;
         private IndexEntry[] pageIndex = new IndexEntry[0];
         private InfiniteFileReader indexReader;
 
         public PageIndexCache(string name, string path)
         {
-            this.indexReader = new InfiniteFileReader(path, StoreCommon.GetIndexFileName(name));
+            this.name = name;
+            this.indexReader = new InfiniteFileReader(path, PsiStoreCommon.GetIndexFileName(name));
         }
 
         public void Dispose()
@@ -56,17 +59,13 @@ namespace Microsoft.Psi.Persistence
             {
                 midIndex = startIndex + ((endIndex - startIndex) / 2);
                 var compResult = CompareTime(time, indexList[midIndex], useOriginatingTime);
-                if (compResult < 0)
-                {
-                    endIndex = midIndex;
-                }
-                else if (compResult > 0)
+                if (compResult > 0)
                 {
                     startIndex = midIndex;
                 }
                 else
                 {
-                    return indexList[midIndex];
+                    endIndex = midIndex;
                 }
             }
 
@@ -75,7 +74,7 @@ namespace Microsoft.Psi.Persistence
 
         private static int CompareTime(DateTime time, IndexEntry entry, bool useOriginatingTime)
         {
-            return useOriginatingTime ? time.CompareTo(entry.OriginatingTime) : time.CompareTo(entry.Time);
+            return useOriginatingTime ? time.CompareTo(entry.OriginatingTime) : time.CompareTo(entry.CreationTime);
         }
 
         private void Update()
@@ -100,7 +99,7 @@ namespace Microsoft.Psi.Persistence
                     newList.Add(indexEntry);
                 }
 
-                if (!this.indexReader.IsMoreDataExpected())
+                if (!PsiStoreMonitor.IsStoreLive(this.name, this.indexReader.Path))
                 {
                     this.indexReader.Dispose();
                     this.indexReader = null;
